@@ -18,12 +18,22 @@ type Config struct {
 	MinIO    MinIOConfig
 	Kafka    KafkaConfig
 	Auth     AuthConfig
+	AI       AIConfig
+}
+
+type AIConfig struct {
+	Provider  string // mock | openai
+	BaseURL   string
+	APIKey    string
+	Model     string
+	Timeout   time.Duration
+	MaxFrames int
 }
 
 type AuthConfig struct {
-	JWTSecret          string
-	AccessTokenTTL     time.Duration
-	RefreshTokenTTL    time.Duration
+	JWTSecret       string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
 }
 
 type PostgresConfig struct {
@@ -84,6 +94,14 @@ func Load() (Config, error) {
 			JWTSecret:       getenv("JWT_SECRET", "dev-only-change-me-32chars-minimum!!"),
 			AccessTokenTTL:  getenvDuration("AUTH_ACCESS_TTL", 15*time.Minute),
 			RefreshTokenTTL: getenvDuration("AUTH_REFRESH_TTL", 7*24*time.Hour),
+		},
+		AI: AIConfig{
+			Provider:  getenv("AI_PROVIDER", "mock"),
+			BaseURL:   getenv("AI_BASE_URL", "https://api.openai.com/v1"),
+			APIKey:    getenv("AI_API_KEY", ""),
+			Model:     getenv("AI_MODEL", "gpt-4o-mini"),
+			Timeout:   getenvDuration("AI_TIMEOUT", 60*time.Second),
+			MaxFrames: getenvInt("AI_MAX_FRAMES", 5),
 		},
 	}
 

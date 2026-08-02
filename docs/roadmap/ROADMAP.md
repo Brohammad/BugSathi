@@ -49,10 +49,11 @@
 - Migration `0004_media_artifacts.sql`
 
 ### M7 — AI Analysis Pipeline
-- `AnalyzerPort` + OpenAI-compatible + Mock
-- Prompt versioning
-- Persist summary + reproduction steps
-- Cost/latency timeouts
+- `AnalyzerPort` + OpenAI-compatible + Mock (default)
+- Prompt versioning (`prompt_v1`)
+- Persist analysis + upsert READY report
+- Outbox `AnalysisCompleted` / `ReportGenerated`
+- Migration `0005_ai_reports.sql`
 
 ### M8 — Bug Report Generation
 - Assemble report aggregate

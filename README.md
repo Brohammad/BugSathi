@@ -4,7 +4,7 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 6 — Media Processing Pipeline**
+**Milestone 7 — AI Analysis Pipeline**
 
 ```bash
 make up && make migrate && make run-api

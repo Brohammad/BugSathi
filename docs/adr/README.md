@@ -16,5 +16,6 @@
 | [0012](0012-projects.md) | Projects & membership roles | Accepted |
 | [0013](0013-recording-upload.md) | Presigned upload + transactional outbox | Accepted |
 | [0014](0014-media-pipeline.md) | Media worker + ffmpeg frames | Accepted |
+| [0015](0015-ai-analysis.md) | AI AnalyzerPort + mock/openai | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

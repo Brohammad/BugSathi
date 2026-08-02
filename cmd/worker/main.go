@@ -7,13 +7,21 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	aikafka "github.com/Brohammad/BugSathi/internal/ai/adapter/kafka"
+	aimock "github.com/Brohammad/BugSathi/internal/ai/adapter/mock"
+	aiopenai "github.com/Brohammad/BugSathi/internal/ai/adapter/openai"
+	aipg "github.com/Brohammad/BugSathi/internal/ai/adapter/postgres"
+	aidomain "github.com/Brohammad/BugSathi/internal/ai/domain"
+	"github.com/Brohammad/BugSathi/internal/ai/port"
+	aisvc "github.com/Brohammad/BugSathi/internal/ai/service"
 	mediaffmpeg "github.com/Brohammad/BugSathi/internal/media/adapter/ffmpeg"
 	mediakafka "github.com/Brohammad/BugSathi/internal/media/adapter/kafka"
 	mediapg "github.com/Brohammad/BugSathi/internal/media/adapter/postgres"
-	"github.com/Brohammad/BugSathi/internal/media/domain"
+	mediadomain "github.com/Brohammad/BugSathi/internal/media/domain"
 	mediasvc "github.com/Brohammad/BugSathi/internal/media/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
@@ -35,7 +43,7 @@ func main() {
 
 	addr := getenv("WORKER_HTTP_ADDR", ":8081")
 	log := logging.New(cfg.LogLevel)
-	log.Info("starting worker", "env", cfg.AppEnv, "addr", addr)
+	log.Info("starting worker", "env", cfg.AppEnv, "addr", addr, "ai_provider", cfg.AI.Provider)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -53,17 +61,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	mediaService := mediasvc.New(
-		mediapg.NewStore(pool),
-		objectStore,
-		mediaffmpeg.New(),
-	)
+	mediaService := mediasvc.New(mediapg.NewStore(pool), objectStore, mediaffmpeg.New())
+	analyzer := newAnalyzer(cfg)
+	aiService := aisvc.New(aipg.NewStore(pool), analyzer, cfg.AI.MaxFrames)
 
-	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicRecordingUploaded, 3); err != nil {
-		log.Warn("ensure uploaded topic", "error", err)
-	}
-	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicFramesExtracted, 3); err != nil {
-		log.Warn("ensure frames topic", "error", err)
+	for _, topic := range []string{
+		mediadomain.TopicRecordingUploaded,
+		mediadomain.TopicFramesExtracted,
+		aidomain.TopicAnalysisCompleted,
+		aidomain.TopicReportGenerated,
+	} {
+		if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, topic, 3); err != nil {
+			log.Warn("ensure topic", "topic", topic, "error", err)
+		}
 	}
 
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
@@ -71,11 +81,20 @@ func main() {
 	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
 	go relay.Run(ctx)
 
-	consumer := mediakafka.NewConsumer(cfg.Kafka, mediaService, log)
-	defer consumer.Close()
+	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, mediaService, log)
+	defer mediaConsumer.Close()
 	go func() {
-		if err := consumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if err := mediaConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("media consumer stopped", "error", err)
+			stop()
+		}
+	}()
+
+	aiConsumer := aikafka.NewConsumer(cfg.Kafka, aiService, log)
+	defer aiConsumer.Close()
+	go func() {
+		if err := aiConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("ai consumer stopped", "error", err)
 			stop()
 		}
 	}()
@@ -90,7 +109,7 @@ func main() {
 			health.WriteReady(w, false, map[string]string{"postgres": "down"})
 			return
 		}
-		health.WriteReady(w, true, map[string]string{"postgres": "up", "consumer": "running"})
+		health.WriteReady(w, true, map[string]string{"postgres": "up", "ai_provider": cfg.AI.Provider})
 	})
 
 	server := &http.Server{Addr: addr, Handler: httpx.RequestIDs(mux)}
@@ -117,6 +136,20 @@ func main() {
 	defer cancel()
 	_ = server.Shutdown(shutdownCtx)
 	log.Info("worker stopped")
+}
+
+func newAnalyzer(cfg config.Config) port.Analyzer {
+	switch strings.ToLower(cfg.AI.Provider) {
+	case "openai":
+		return aiopenai.New(aiopenai.Config{
+			BaseURL: cfg.AI.BaseURL,
+			APIKey:  cfg.AI.APIKey,
+			Model:   cfg.AI.Model,
+			Timeout: cfg.AI.Timeout,
+		})
+	default:
+		return aimock.New()
+	}
 }
 
 func getenv(key, fallback string) string {
