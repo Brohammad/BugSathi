@@ -12,5 +12,6 @@
 | [0008](0008-observability-ids.md) | Correlation IDs from day one | Accepted |
 | [0009](0009-ffmpeg-media-worker.md) | ffmpeg only in Media Worker | Accepted |
 | [0010](0010-redpanda-local.md) | Redpanda for local Kafka API | Accepted |
+| [0011](0011-authentication.md) | Argon2id + JWT + rotating refresh | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

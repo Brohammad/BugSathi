@@ -17,6 +17,13 @@ type Config struct {
 	Postgres PostgresConfig
 	MinIO    MinIOConfig
 	Kafka    KafkaConfig
+	Auth     AuthConfig
+}
+
+type AuthConfig struct {
+	JWTSecret          string
+	AccessTokenTTL     time.Duration
+	RefreshTokenTTL    time.Duration
 }
 
 type PostgresConfig struct {
@@ -73,10 +80,18 @@ func Load() (Config, error) {
 			Brokers:  strings.Split(getenv("KAFKA_BROKERS", "localhost:19092"), ","),
 			ClientID: getenv("KAFKA_CLIENT_ID", "bugsathi"),
 		},
+		Auth: AuthConfig{
+			JWTSecret:       getenv("JWT_SECRET", "dev-only-change-me-32chars-minimum!!"),
+			AccessTokenTTL:  getenvDuration("AUTH_ACCESS_TTL", 15*time.Minute),
+			RefreshTokenTTL: getenvDuration("AUTH_REFRESH_TTL", 7*24*time.Hour),
+		},
 	}
 
 	if cfg.HTTPAddr == "" {
 		return Config{}, fmt.Errorf("HTTP_ADDR must not be empty")
+	}
+	if len(cfg.Auth.JWTSecret) < 32 {
+		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
 	return cfg, nil
 }
@@ -110,6 +125,18 @@ func getenvBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return b
+}
+
+func getenvDuration(key string, fallback time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return fallback
+	}
+	return d
 }
 
 // ShutdownTimeout is the graceful shutdown window for HTTP servers.

@@ -4,27 +4,31 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 1 — Approved**  
-**Milestone 2 — Development Environment** (this tree)
+**Milestone 3 — Authentication**
 
 | Doc | Path |
 |-----|------|
+| Auth design | [docs/architecture/MILESTONE-3-AUTH.md](docs/architecture/MILESTONE-3-AUTH.md) |
+| Auth ADR | [docs/adr/0011-authentication.md](docs/adr/0011-authentication.md) |
 | System design | [docs/architecture/MILESTONE-1-SYSTEM-DESIGN.md](docs/architecture/MILESTONE-1-SYSTEM-DESIGN.md) |
-| Data lifecycle | [docs/architecture/DATA-LIFECYCLE.md](docs/architecture/DATA-LIFECYCLE.md) |
-| Dev environment | [docs/architecture/MILESTONE-2-DEV-ENVIRONMENT.md](docs/architecture/MILESTONE-2-DEV-ENVIRONMENT.md) |
-| ADRs | [docs/adr/](docs/adr/) |
 | Roadmap | [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) |
 
-## Quick start (Milestone 2)
+## Quick start
 
 ```bash
 cp .env.example .env
-make up          # Postgres, MinIO, Redpanda
-make build
-make run-api     # :8080  → GET /healthz /readyz
-make run-worker  # :8081  → GET /healthz /readyz
-make test
-make down
+make up
+make migrate
+make run-api
+```
+
+```bash
+# Register
+curl -s localhost:8080/v1/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"dev@example.com","password":"password123","name":"Dev"}'
+
+# Me (use access_token from register/login response)
+curl -s localhost:8080/v1/auth/me -H "Authorization: Bearer $ACCESS"
 ```
 
 Requires Docker Compose and Go 1.24+. A local toolchain may live under `.tools/go` (gitignored).

@@ -37,6 +37,15 @@ func (h *Handler) Readyz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, Status{Status: "ready"})
 }
 
+// WriteReady writes an explicit readiness response (avoids races on SetReady).
+func WriteReady(w http.ResponseWriter, ready bool, checks map[string]string) {
+	if !ready {
+		writeJSON(w, http.StatusServiceUnavailable, Status{Status: "not_ready", Checks: checks})
+		return
+	}
+	writeJSON(w, http.StatusOK, Status{Status: "ready", Checks: checks})
+}
+
 func writeJSON(w http.ResponseWriter, code int, body Status) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

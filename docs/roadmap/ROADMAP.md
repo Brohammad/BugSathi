@@ -22,10 +22,11 @@
 - GitHub Actions CI (vet/test/build)
 
 ### M3 — Authentication
-- User model, password hashing (argon2id)
-- JWT or session cookies (per ADR)
-- Auth middleware, refresh rotation
-- Unit + integration tests
+- User model, argon2id password hashing
+- JWT access + rotating opaque refresh tokens
+- Auth middleware (`Authorization: Bearer`)
+- Migration `0001_auth.sql`, `make migrate`
+- Unit tests (memory repos) + HTTP handler tests
 
 ### M4 — Projects
 - Create/list/get project
