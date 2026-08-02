@@ -13,5 +13,6 @@
 | [0009](0009-ffmpeg-media-worker.md) | ffmpeg only in Media Worker | Accepted |
 | [0010](0010-redpanda-local.md) | Redpanda for local Kafka API | Accepted |
 | [0011](0011-authentication.md) | Argon2id + JWT + rotating refresh | Accepted |
+| [0012](0012-projects.md) | Projects & membership roles | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

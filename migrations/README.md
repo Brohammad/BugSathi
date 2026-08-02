@@ -10,3 +10,4 @@ make migrate
 | File | Milestone |
 |------|-----------|
 | `0001_auth.sql` | M3 — users + refresh_tokens |
+| `0002_projects.sql` | M4 — projects + project_members |

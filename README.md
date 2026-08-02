@@ -4,13 +4,12 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 3 — Authentication**
+**Milestone 4 — Projects**
 
 | Doc | Path |
 |-----|------|
+| Projects ADR | [docs/adr/0012-projects.md](docs/adr/0012-projects.md) |
 | Auth design | [docs/architecture/MILESTONE-3-AUTH.md](docs/architecture/MILESTONE-3-AUTH.md) |
-| Auth ADR | [docs/adr/0011-authentication.md](docs/adr/0011-authentication.md) |
-| System design | [docs/architecture/MILESTONE-1-SYSTEM-DESIGN.md](docs/architecture/MILESTONE-1-SYSTEM-DESIGN.md) |
 | Roadmap | [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) |
 
 ## Quick start
@@ -23,12 +22,13 @@ make run-api
 ```
 
 ```bash
-# Register
+# Auth
 curl -s localhost:8080/v1/auth/register -H 'Content-Type: application/json' \
   -d '{"email":"dev@example.com","password":"password123","name":"Dev"}'
 
-# Me (use access_token from register/login response)
-curl -s localhost:8080/v1/auth/me -H "Authorization: Bearer $ACCESS"
+# Projects (Bearer access token)
+curl -s localhost:8080/v1/projects -H "Authorization: Bearer $ACCESS" \
+  -H 'Content-Type: application/json' -d '{"name":"Demo"}'
 ```
 
 Requires Docker Compose and Go 1.24+. A local toolchain may live under `.tools/go` (gitignored).

@@ -29,9 +29,10 @@
 - Unit tests (memory repos) + HTTP handler tests
 
 ### M4 — Projects
-- Create/list/get project
+- Create/list/get/update/delete project
 - Membership roles (owner/member)
-- Authorization checks on all project-scoped routes
+- Authorization on all project-scoped routes
+- Migration `0002_projects.sql`
 
 ### M5 — Recording Upload
 - Presigned MinIO upload

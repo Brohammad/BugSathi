@@ -14,7 +14,10 @@ import (
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/jwtmgr"
 	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/password"
-	"github.com/Brohammad/BugSathi/internal/auth/service"
+	authsvc "github.com/Brohammad/BugSathi/internal/auth/service"
+	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
+	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
+	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
 	"github.com/Brohammad/BugSathi/internal/platform/health"
@@ -51,14 +54,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	authSvc := service.New(
+	authService := authsvc.New(
 		authpg.NewUserRepo(pool),
 		authpg.NewRefreshRepo(pool),
 		password.NewArgon2id(),
 		tokenMgr,
 		cfg.Auth.RefreshTokenTTL,
 	)
-	authHandler := authhttp.NewHandler(authSvc)
+	authHandler := authhttp.NewHandler(authService)
+
+	projectService := projectsvc.New(projectpg.NewRepo(pool))
+	projectHandler := projecthttp.NewHandler(projectService)
+	protect := func(next http.Handler) http.Handler {
+		return authhttp.RequireAccess(authService, next)
+	}
 
 	healthHandler := health.NewHandler()
 	mux := http.NewServeMux()
@@ -73,6 +82,7 @@ func main() {
 		health.WriteReady(w, true, map[string]string{"postgres": "up"})
 	})
 	authHandler.RegisterRoutes(mux)
+	projectHandler.RegisterRoutes(mux, protect)
 
 	server := &http.Server{
 		Addr:    cfg.HTTPAddr,
