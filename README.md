@@ -4,13 +4,21 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 4 — Projects**
+**Milestone 5 — Recording Upload**
 
-| Doc | Path |
-|-----|------|
-| Projects ADR | [docs/adr/0012-projects.md](docs/adr/0012-projects.md) |
-| Auth design | [docs/architecture/MILESTONE-3-AUTH.md](docs/architecture/MILESTONE-3-AUTH.md) |
-| Roadmap | [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) |
+```bash
+make up && make migrate && make run-api
+```
+
+```bash
+# after auth + create project:
+curl -s localhost:8080/v1/projects/$PID/recordings -H "Authorization: Bearer $ACCESS" \
+  -H 'Content-Type: application/json' \
+  -d '{"content_type":"video/webm","filename":"bug.webm","metadata":{"browser":"chrome"}}'
+# PUT bytes to upload_url, then:
+curl -s -X POST localhost:8080/v1/projects/$PID/recordings/$RID/complete \
+  -H "Authorization: Bearer $ACCESS"
+```
 
 ## Quick start
 

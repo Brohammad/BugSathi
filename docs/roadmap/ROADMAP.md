@@ -36,9 +36,10 @@
 
 ### M5 — Recording Upload
 - Presigned MinIO upload
-- Recording metadata + browser/OS fields
-- Outbox → `recording.uploaded`
+- Recording metadata + browser/OS fields (JSONB)
+- Outbox → `bugsathi.recording.uploaded`
 - Idempotent complete-upload API
+- Migration `0003_recordings.sql`
 
 ### M6 — Media Processing Pipeline
 - ffmpeg frame extraction

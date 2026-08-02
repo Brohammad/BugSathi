@@ -150,6 +150,12 @@ func (s *Service) ListMembers(ctx context.Context, userID, projectID uuid.UUID) 
 	return out, nil
 }
 
+// EnsureMember is used by other contexts (e.g. uploads) for authorization.
+func (s *Service) EnsureMember(ctx context.Context, userID, projectID uuid.UUID) error {
+	_, err := s.requireMember(ctx, projectID, userID)
+	return err
+}
+
 func (s *Service) requireMember(ctx context.Context, projectID, userID uuid.UUID) (domain.Member, error) {
 	m, err := s.repo.GetMembership(ctx, projectID, userID)
 	if err != nil {

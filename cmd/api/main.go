@@ -15,14 +15,22 @@ import (
 	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/password"
 	authsvc "github.com/Brohammad/BugSathi/internal/auth/service"
-	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
-	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
-	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
 	"github.com/Brohammad/BugSathi/internal/platform/health"
 	"github.com/Brohammad/BugSathi/internal/platform/httpx"
+	platformkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
+	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
+	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
+	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
+	uploadaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/access"
+	uploadhttp "github.com/Brohammad/BugSathi/internal/uploads/adapter/httpapi"
+	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
+	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
+	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
+	"github.com/Brohammad/BugSathi/internal/uploads/domain"
+	uploadsvc "github.com/Brohammad/BugSathi/internal/uploads/service"
 )
 
 func main() {
@@ -65,6 +73,32 @@ func main() {
 
 	projectService := projectsvc.New(projectpg.NewRepo(pool))
 	projectHandler := projecthttp.NewHandler(projectService)
+
+	objectStore, err := uploadminio.New(cfg.MinIO)
+	if err != nil {
+		log.Error("minio client failed", "error", err)
+		os.Exit(1)
+	}
+	if err := objectStore.EnsureBucket(ctx); err != nil {
+		log.Warn("minio ensure bucket", "error", err)
+	}
+
+	uploadService := uploadsvc.New(
+		uploadpg.NewRecordingRepo(pool),
+		objectStore,
+		uploadaccess.New(projectService),
+		15*time.Minute,
+	)
+	uploadHandler := uploadhttp.NewHandler(uploadService)
+
+	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
+	defer kafkaPub.Close()
+	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicRecordingUploaded, 3); err != nil {
+		log.Warn("ensure kafka topic", "error", err)
+	}
+	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
+	go relay.Run(ctx)
+
 	protect := func(next http.Handler) http.Handler {
 		return authhttp.RequireAccess(authService, next)
 	}
@@ -83,6 +117,7 @@ func main() {
 	})
 	authHandler.RegisterRoutes(mux)
 	projectHandler.RegisterRoutes(mux, protect)
+	uploadHandler.RegisterRoutes(mux, protect)
 
 	server := &http.Server{
 		Addr:    cfg.HTTPAddr,

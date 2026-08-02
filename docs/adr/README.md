@@ -14,5 +14,6 @@
 | [0010](0010-redpanda-local.md) | Redpanda for local Kafka API | Accepted |
 | [0011](0011-authentication.md) | Argon2id + JWT + rotating refresh | Accepted |
 | [0012](0012-projects.md) | Projects & membership roles | Accepted |
+| [0013](0013-recording-upload.md) | Presigned upload + transactional outbox | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.
