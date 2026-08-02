@@ -16,7 +16,7 @@ endif
 help:
 	@echo "Targets:"
 	@echo "  make bootstrap-go Download Go into .tools/go (if missing)"
-	@echo "  make up           Start Postgres, MinIO, Redpanda"
+	@echo "  make up           Start Postgres, MinIO, Redpanda, Prometheus, Grafana, Jaeger"
 	@echo "  make down         Stop dependencies"
 	@echo "  make logs         Tail compose logs"
 	@echo "  make tidy         go mod tidy"
@@ -66,7 +66,7 @@ bootstrap-go:
 
 up:
 	$(COMPOSE) up -d
-	@echo "Postgres :5432  MinIO :9000/:9001  Redpanda Kafka :19092"
+	@echo "Postgres :5432  MinIO :9000/:9001  Redpanda :19092  Prometheus :9090  Grafana :3000  Jaeger :16686  OTLP :4318"
 
 down:
 	$(COMPOSE) down

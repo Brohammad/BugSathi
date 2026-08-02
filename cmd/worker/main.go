@@ -29,9 +29,11 @@ import (
 	"github.com/Brohammad/BugSathi/internal/platform/httpx"
 	platformkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
+	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func main() {
@@ -48,6 +50,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	shutdownTrace, err := observability.SetupTracing(ctx, "bugsathi-worker", cfg.Observability.OTLPEndpoint)
+	if err != nil {
+		log.Error("tracing setup failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdownTrace(context.Background()) }()
+
+	reg := prometheus.NewRegistry()
+	metrics := observability.NewMetrics(reg)
+
 	pool, err := db.Connect(ctx, cfg.Postgres.DSN())
 	if err != nil {
 		log.Error("postgres connect failed", "error", err)
@@ -62,7 +74,11 @@ func main() {
 	}
 
 	mediaService := mediasvc.New(mediapg.NewStore(pool), objectStore, mediaffmpeg.New())
-	analyzer := newAnalyzer(cfg)
+	analyzer := observability.Analyzer{
+		Inner:   newAnalyzer(cfg),
+		Metrics: metrics,
+		Name:    cfg.AI.Provider,
+	}
 	aiService := aisvc.New(aipg.NewStore(pool), analyzer, cfg.AI.MaxFrames)
 
 	for _, topic := range []string{
@@ -80,8 +96,9 @@ func main() {
 	defer kafkaPub.Close()
 	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
 	go relay.Run(ctx)
+	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
 
-	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, mediaService, log)
+	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, mediaService, log, metrics)
 	defer mediaConsumer.Close()
 	go func() {
 		if err := mediaConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -90,7 +107,7 @@ func main() {
 		}
 	}()
 
-	aiConsumer := aikafka.NewConsumer(cfg.Kafka, aiService, log)
+	aiConsumer := aikafka.NewConsumer(cfg.Kafka, aiService, log, metrics)
 	defer aiConsumer.Close()
 	go func() {
 		if err := aiConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -111,8 +128,9 @@ func main() {
 		}
 		health.WriteReady(w, true, map[string]string{"postgres": "up", "ai_provider": cfg.AI.Provider})
 	})
+	mux.Handle("GET /metrics", observability.Handler(reg))
 
-	server := &http.Server{Addr: addr, Handler: httpx.RequestIDs(mux)}
+	server := &http.Server{Addr: addr, Handler: httpx.RequestIDs(observability.Middleware("worker", metrics, mux))}
 	errCh := make(chan error, 1)
 	go func() {
 		log.Info("worker health listening", "addr", addr)

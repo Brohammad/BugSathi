@@ -71,8 +71,10 @@
 - Migration `0007_report_comments.sql`
 
 ### M11 — Observability
-- Metrics (RED), traces (OTLP), log correlation IDs
-- Dashboards for lag, failure rate, AI latency
+- Prometheus RED metrics on `/metrics` (API + worker)
+- OTLP traces (optional via `OTEL_EXPORTER_OTLP_ENDPOINT`)
+- Compose: Prometheus, Grafana dashboard, OTel Collector, Jaeger
+- Outbox lag + AI latency + pipeline stage metrics
 
 ### M12 — Deployment
 - Production Compose or K8s manifests
