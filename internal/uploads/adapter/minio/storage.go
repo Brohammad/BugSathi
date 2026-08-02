@@ -85,3 +85,11 @@ func (s *Storage) Upload(ctx context.Context, key, contentType string, r io.Read
 	})
 	return err
 }
+
+func (s *Storage) PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error) {
+	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, nil)
+	if err != nil {
+		return "", err
+	}
+	return u.String(), nil
+}

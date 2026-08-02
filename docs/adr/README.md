@@ -17,5 +17,6 @@
 | [0013](0013-recording-upload.md) | Presigned upload + transactional outbox | Accepted |
 | [0014](0014-media-pipeline.md) | Media worker + ffmpeg frames | Accepted |
 | [0015](0015-ai-analysis.md) | AI AnalyzerPort + mock/openai | Accepted |
+| [0016](0016-bug-report-api.md) | Bug report read API | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

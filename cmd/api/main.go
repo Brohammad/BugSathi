@@ -24,6 +24,9 @@ import (
 	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
 	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
 	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
+	reporthttp "github.com/Brohammad/BugSathi/internal/reports/adapter/httpapi"
+	reportpg "github.com/Brohammad/BugSathi/internal/reports/adapter/postgres"
+	reportsvc "github.com/Brohammad/BugSathi/internal/reports/service"
 	uploadaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/access"
 	uploadhttp "github.com/Brohammad/BugSathi/internal/uploads/adapter/httpapi"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
@@ -91,6 +94,13 @@ func main() {
 	)
 	uploadHandler := uploadhttp.NewHandler(uploadService)
 
+	reportService := reportsvc.New(
+		reportpg.NewRepo(pool),
+		uploadaccess.New(projectService),
+		objectStore,
+	)
+	reportHandler := reporthttp.NewHandler(reportService)
+
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
 	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicRecordingUploaded, 3); err != nil {
@@ -118,6 +128,7 @@ func main() {
 	authHandler.RegisterRoutes(mux)
 	projectHandler.RegisterRoutes(mux, protect)
 	uploadHandler.RegisterRoutes(mux, protect)
+	reportHandler.RegisterRoutes(mux, protect)
 
 	server := &http.Server{
 		Addr:    cfg.HTTPAddr,

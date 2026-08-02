@@ -4,7 +4,7 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 7 — AI Analysis Pipeline**
+**Milestone 8 — Bug Report API**
 
 ```bash
 make up && make migrate && make run-api
@@ -17,6 +17,10 @@ curl -s localhost:8080/v1/projects/$PID/recordings -H "Authorization: Bearer $AC
   -d '{"content_type":"video/webm","filename":"bug.webm","metadata":{"browser":"chrome"}}'
 # PUT bytes to upload_url, then:
 curl -s -X POST localhost:8080/v1/projects/$PID/recordings/$RID/complete \
+  -H "Authorization: Bearer $ACCESS"
+
+# after worker finishes AI:
+curl -s localhost:8080/v1/projects/$PID/recordings/$RID/report \
   -H "Authorization: Bearer $ACCESS"
 ```
 

@@ -56,9 +56,9 @@
 - Migration `0005_ai_reports.sql`
 
 ### M8 — Bug Report Generation
-- Assemble report aggregate
-- Status READY
-- Read API for report + frames
+- Read API for report aggregate + frames (presigned GET)
+- `GET /v1/projects/{id}/reports` and `.../reports/{id}`
+- `GET /v1/projects/{id}/recordings/{rid}/report`
 
 ### M9 — Sharing
 - Share tokens, expiry, revoke
