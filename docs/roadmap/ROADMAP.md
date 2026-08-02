@@ -83,8 +83,10 @@
 - `make up-prod` / `make build-images`
 
 ### M13 — Performance Optimization
-- Profiling, connection pools, keyframe selection
-- Caching hot report reads
+- Configurable Postgres pool (`POSTGRES_MAX_CONNS`, …)
+- Evenly spaced keyframe selection for AI (`AI_MAX_FRAMES`)
+- In-process report detail TTL cache (`REPORT_CACHE_TTL`)
+- Optional `ENABLE_PPROF=true` → `/debug/pprof/`
 
 ### M14 — Production Hardening
 - Rate limits, security headers, chaos/retry drills

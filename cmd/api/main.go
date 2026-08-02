@@ -12,8 +12,8 @@ import (
 
 	authhttp "github.com/Brohammad/BugSathi/internal/auth/adapter/httpapi"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/jwtmgr"
-	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/password"
+	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	authsvc "github.com/Brohammad/BugSathi/internal/auth/service"
 	collabhttp "github.com/Brohammad/BugSathi/internal/collab/adapter/httpapi"
 	collabhub "github.com/Brohammad/BugSathi/internal/collab/adapter/hub"
@@ -26,9 +26,11 @@ import (
 	platformkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
+	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
 	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
 	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
 	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
+	reportcache "github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
 	reporthttp "github.com/Brohammad/BugSathi/internal/reports/adapter/httpapi"
 	reportpg "github.com/Brohammad/BugSathi/internal/reports/adapter/postgres"
 	reportsvc "github.com/Brohammad/BugSathi/internal/reports/service"
@@ -71,7 +73,7 @@ func main() {
 	reg := prometheus.NewRegistry()
 	metrics := observability.NewMetrics(reg)
 
-	pool, err := db.Connect(ctx, cfg.Postgres.DSN())
+	pool, err := db.ConnectWithPool(ctx, cfg.Postgres.DSN(), cfg.Postgres)
 	if err != nil {
 		log.Error("postgres connect failed", "error", err)
 		os.Exit(1)
@@ -117,6 +119,7 @@ func main() {
 		reportpg.NewRepo(pool),
 		uploadaccess.New(projectService),
 		objectStore,
+		reportcache.NewReportCache(cfg.Cache.ReportTTL),
 	)
 	reportHandler := reporthttp.NewHandler(reportService)
 
@@ -163,6 +166,10 @@ func main() {
 		health.WriteReady(w, true, map[string]string{"postgres": "up"})
 	})
 	mux.Handle("GET /metrics", observability.Handler(reg))
+	if cfg.Observability.EnablePprof {
+		pprofx.Mount(mux)
+		log.Warn("pprof enabled at /debug/pprof/")
+	}
 	authHandler.RegisterRoutes(mux)
 	projectHandler.RegisterRoutes(mux, protect)
 	uploadHandler.RegisterRoutes(mux, protect)

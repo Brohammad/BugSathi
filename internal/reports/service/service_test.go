@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	reportcache "github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
 	"github.com/Brohammad/BugSathi/internal/reports/adapter/memory"
 	"github.com/Brohammad/BugSathi/internal/reports/domain"
 	"github.com/Brohammad/BugSathi/internal/reports/service"
@@ -14,7 +15,7 @@ import (
 
 func TestListAndGetReport(t *testing.T) {
 	repo := memory.NewRepo()
-	svc := service.New(repo, memory.AccessOK{}, memory.Signer{})
+	svc := service.New(repo, memory.AccessOK{}, memory.Signer{}, nil)
 
 	projectID := uuid.New()
 	userID := uuid.New()
@@ -55,8 +56,47 @@ func TestListAndGetReport(t *testing.T) {
 		t.Fatalf("%+v %v", byRec, err)
 	}
 
-	deny := service.New(repo, memory.AccessDeny{}, memory.Signer{})
+	deny := service.New(repo, memory.AccessDeny{}, memory.Signer{}, nil)
 	if _, err := deny.List(context.Background(), userID, projectID); err != domain.ErrForbidden {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestGetUsesCache(t *testing.T) {
+	repo := memory.NewRepo()
+	c := reportcache.NewReportCache(time.Minute)
+	svc := service.New(repo, memory.AccessOK{}, memory.Signer{}, c)
+
+	projectID := uuid.New()
+	userID := uuid.New()
+	reportID := uuid.New()
+	repo.Seed(domain.Detail{
+		Report: domain.Report{
+			ID: reportID, ProjectID: projectID, RecordingID: uuid.New(),
+			Status: domain.StatusReady, Title: "Cached", Summary: "s",
+			Steps: json.RawMessage(`[]`), CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		},
+		RecordingStatus: "READY",
+		Metadata:        json.RawMessage(`{}`),
+	})
+
+	if _, err := svc.Get(context.Background(), userID, projectID, reportID); err != nil {
+		t.Fatal(err)
+	}
+	repo.Seed(domain.Detail{
+		Report: domain.Report{
+			ID: reportID, ProjectID: projectID, RecordingID: uuid.New(),
+			Status: domain.StatusReady, Title: "Fresh", Summary: "s",
+			Steps: json.RawMessage(`[]`), CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		},
+		RecordingStatus: "READY",
+		Metadata:        json.RawMessage(`{}`),
+	})
+	d, err := svc.Get(context.Background(), userID, projectID, reportID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Report.Title != "Cached" {
+		t.Fatalf("expected cache hit, got %q", d.Report.Title)
 	}
 }

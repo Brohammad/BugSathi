@@ -20,10 +20,12 @@ type Config struct {
 	Auth          AuthConfig
 	AI            AIConfig
 	Observability ObservabilityConfig
+	Cache         CacheConfig
 }
 
 type ObservabilityConfig struct {
 	OTLPEndpoint string // e.g. http://localhost:4318/v1/traces ; empty disables export
+	EnablePprof  bool
 }
 
 type AIConfig struct {
@@ -42,12 +44,15 @@ type AuthConfig struct {
 }
 
 type PostgresConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DB       string
-	SSLMode  string
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	DB              string
+	SSLMode         string
+	MaxConns        int32
+	MinConns        int32
+	MaxConnLifetime time.Duration
 }
 
 func (p PostgresConfig) DSN() string {
@@ -70,6 +75,10 @@ type KafkaConfig struct {
 	ClientID string
 }
 
+type CacheConfig struct {
+	ReportTTL time.Duration // 0 disables
+}
+
 // Load reads configuration from environment variables with safe local defaults.
 func Load() (Config, error) {
 	cfg := Config{
@@ -77,12 +86,15 @@ func Load() (Config, error) {
 		HTTPAddr: getenv("HTTP_ADDR", ":8080"),
 		LogLevel: getenv("LOG_LEVEL", "info"),
 		Postgres: PostgresConfig{
-			Host:     getenv("POSTGRES_HOST", "localhost"),
-			Port:     getenvInt("POSTGRES_PORT", 5432),
-			User:     getenv("POSTGRES_USER", "bugsathi"),
-			Password: getenv("POSTGRES_PASSWORD", "bugsathi"),
-			DB:       getenv("POSTGRES_DB", "bugsathi"),
-			SSLMode:  getenv("POSTGRES_SSLMODE", "disable"),
+			Host:            getenv("POSTGRES_HOST", "localhost"),
+			Port:            getenvInt("POSTGRES_PORT", 5432),
+			User:            getenv("POSTGRES_USER", "bugsathi"),
+			Password:        getenv("POSTGRES_PASSWORD", "bugsathi"),
+			DB:              getenv("POSTGRES_DB", "bugsathi"),
+			SSLMode:         getenv("POSTGRES_SSLMODE", "disable"),
+			MaxConns:        int32(getenvInt("POSTGRES_MAX_CONNS", 10)),
+			MinConns:        int32(getenvInt("POSTGRES_MIN_CONNS", 1)),
+			MaxConnLifetime: getenvDuration("POSTGRES_MAX_CONN_LIFETIME", time.Hour),
 		},
 		MinIO: MinIOConfig{
 			Endpoint:  getenv("MINIO_ENDPOINT", "localhost:9000"),
@@ -110,6 +122,10 @@ func Load() (Config, error) {
 		},
 		Observability: ObservabilityConfig{
 			OTLPEndpoint: getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+			EnablePprof:  getenvBool("ENABLE_PPROF", false),
+		},
+		Cache: CacheConfig{
+			ReportTTL: getenvDuration("REPORT_CACHE_TTL", 30*time.Second),
 		},
 	}
 

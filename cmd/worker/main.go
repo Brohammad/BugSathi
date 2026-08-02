@@ -30,6 +30,7 @@ import (
 	platformkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
+	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
@@ -60,7 +61,7 @@ func main() {
 	reg := prometheus.NewRegistry()
 	metrics := observability.NewMetrics(reg)
 
-	pool, err := db.Connect(ctx, cfg.Postgres.DSN())
+	pool, err := db.ConnectWithPool(ctx, cfg.Postgres.DSN(), cfg.Postgres)
 	if err != nil {
 		log.Error("postgres connect failed", "error", err)
 		os.Exit(1)
@@ -129,6 +130,10 @@ func main() {
 		health.WriteReady(w, true, map[string]string{"postgres": "up", "ai_provider": cfg.AI.Provider})
 	})
 	mux.Handle("GET /metrics", observability.Handler(reg))
+	if cfg.Observability.EnablePprof {
+		pprofx.Mount(mux)
+		log.Warn("pprof enabled at /debug/pprof/")
+	}
 
 	server := &http.Server{Addr: addr, Handler: httpx.RequestIDs(observability.Middleware("worker", metrics, mux))}
 	errCh := make(chan error, 1)

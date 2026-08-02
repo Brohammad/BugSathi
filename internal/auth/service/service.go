@@ -15,12 +15,12 @@ import (
 )
 
 type Service struct {
-	users    port.UserRepository
-	refresh  port.RefreshTokenRepository
-	hasher   port.PasswordHasher
-	tokens   port.TokenManager
+	users      port.UserRepository
+	refresh    port.RefreshTokenRepository
+	hasher     port.PasswordHasher
+	tokens     port.TokenManager
 	refreshTTL time.Duration
-	now      func() time.Time
+	now        func() time.Time
 }
 
 func New(

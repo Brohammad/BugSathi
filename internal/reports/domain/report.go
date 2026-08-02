@@ -45,9 +45,9 @@ type Frame struct {
 }
 
 type Detail struct {
-	Report        Report
+	Report          Report
 	RecordingStatus string
-	Metadata      json.RawMessage
-	Frames        []Frame
-	ThumbURL      string
+	Metadata        json.RawMessage
+	Frames          []Frame
+	ThumbURL        string
 }

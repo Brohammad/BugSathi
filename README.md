@@ -4,12 +4,13 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 12 — Deployment**
+**Milestone 13 — Performance**
 
 ```bash
 cp .env.prod.example .env.prod
 make up-prod
 curl -s localhost:8080/readyz
+# optional: ENABLE_PPROF=true → /debug/pprof/
 ```
 
 ```bash

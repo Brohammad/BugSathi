@@ -59,8 +59,8 @@ func (a Authors) DisplayName(_ context.Context, userID uuid.UUID) (string, error
 }
 
 var (
-	_ port.Repository   = (*Repo)(nil)
+	_ port.Repository    = (*Repo)(nil)
 	_ port.ProjectAccess = AccessOK{}
-	_ port.ReportGuard  = ReportOK{}
-	_ port.AuthorLookup = Authors{}
+	_ port.ReportGuard   = ReportOK{}
+	_ port.AuthorLookup  = Authors{}
 )

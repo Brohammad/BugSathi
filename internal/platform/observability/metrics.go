@@ -22,12 +22,12 @@ import (
 
 // Metrics holds Prometheus instruments for API and worker.
 type Metrics struct {
-	HTTPRequests    *prometheus.CounterVec
-	HTTPDuration    *prometheus.HistogramVec
-	PipelineJobs    *prometheus.CounterVec
+	HTTPRequests     *prometheus.CounterVec
+	HTTPDuration     *prometheus.HistogramVec
+	PipelineJobs     *prometheus.CounterVec
 	PipelineDuration *prometheus.HistogramVec
-	AIDuration      *prometheus.HistogramVec
-	OutboxPending   prometheus.Gauge
+	AIDuration       *prometheus.HistogramVec
+	OutboxPending    prometheus.Gauge
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {

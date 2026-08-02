@@ -11,12 +11,12 @@ import (
 )
 
 type Service struct {
-	repo     port.Repository
-	access   port.ProjectAccess
-	reports  port.ReportReader
-	signer   port.URLSigner
-	urlTTL   time.Duration
-	now      func() time.Time
+	repo    port.Repository
+	access  port.ProjectAccess
+	reports port.ReportReader
+	signer  port.URLSigner
+	urlTTL  time.Duration
+	now     func() time.Time
 }
 
 func New(repo port.Repository, access port.ProjectAccess, reports port.ReportReader, signer port.URLSigner) *Service {
