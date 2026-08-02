@@ -1,25 +1,68 @@
 # BugSathi — common developer commands
-# Requires: Docker Compose, Go 1.24+
+# Requires: Docker Compose, Go 1.24+ (system Go OR .tools/go)
 
-GO ?= go
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
-export PATH := $(CURDIR)/.tools/go/bin:$(PATH)
+LOCAL_GO := $(CURDIR)/.tools/go/bin/go
 
-.PHONY: help up down logs ps tidy test test-race build run-api run-worker health migrate fmt vet ci
+# Prefer project-local toolchain, then PATH.
+ifeq ($(wildcard $(LOCAL_GO)),$(LOCAL_GO))
+  GO := $(LOCAL_GO)
+else
+  GO ?= go
+endif
+
+.PHONY: help ensure-go bootstrap-go up down logs ps tidy test test-race build run-api run-worker health migrate fmt vet ci
 
 help:
 	@echo "Targets:"
-	@echo "  make up          Start Postgres, MinIO, Redpanda"
-	@echo "  make down        Stop dependencies"
-	@echo "  make logs        Tail compose logs"
-	@echo "  make tidy        go mod tidy"
-	@echo "  make test        Run unit tests"
-	@echo "  make build       Build api + worker + migrate"
-	@echo "  make migrate     Apply SQL migrations"
-	@echo "  make run-api     Run API on :8080 (needs migrate)"
-	@echo "  make run-worker  Run worker health on :8081"
-	@echo "  make health      Curl local health endpoints"
-	@echo "  make ci          fmt + vet + test"
+	@echo "  make bootstrap-go Download Go into .tools/go (if missing)"
+	@echo "  make up           Start Postgres, MinIO, Redpanda"
+	@echo "  make down         Stop dependencies"
+	@echo "  make logs         Tail compose logs"
+	@echo "  make tidy         go mod tidy"
+	@echo "  make test         Run unit tests"
+	@echo "  make build        Build api + worker + migrate"
+	@echo "  make migrate      Apply SQL migrations"
+	@echo "  make run-api      Run API on :8080 (needs migrate)"
+	@echo "  make run-worker   Run worker health on :8081"
+	@echo "  make health       Curl local health endpoints"
+	@echo "  make ci           fmt + vet + test"
+	@echo ""
+	@echo "Using GO=$(GO)"
+
+ensure-go:
+	@if ! command -v "$(GO)" >/dev/null 2>&1 && [ ! -x "$(GO)" ]; then \
+		echo "Go not found."; \
+		echo "Run:  make bootstrap-go"; \
+		echo "Or install Go 1.24+ and ensure it is on PATH."; \
+		exit 1; \
+	fi
+	@"$(GO)" version
+
+# Downloads an official Go toolchain into .tools/go (gitignored).
+bootstrap-go:
+	@mkdir -p "$(CURDIR)/.tools"
+	@if [ -x "$(LOCAL_GO)" ]; then \
+		echo "Already present: $(LOCAL_GO)"; \
+		"$(LOCAL_GO)" version; \
+		exit 0; \
+	fi
+	@ARCH=$$(uname -m); \
+	case "$$ARCH" in \
+		arm64|aarch64) GOARCH=arm64 ;; \
+		x86_64|amd64) GOARCH=amd64 ;; \
+		*) echo "unsupported arch: $$ARCH"; exit 1 ;; \
+	esac; \
+	OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
+	VER=1.24.5; \
+	TGZ="go$${VER}.$${OS}-$${GOARCH}.tar.gz"; \
+	URL="https://go.dev/dl/$${TGZ}"; \
+	echo "Downloading $${URL}"; \
+	curl -fsSL -o "$(CURDIR)/.tools/go.tgz" "$${URL}" || curl -fsSL -A 'Mozilla/5.0' -o "$(CURDIR)/.tools/go.tgz" "https://dl.google.com/go/$${TGZ}"; \
+	rm -rf "$(CURDIR)/.tools/go"; \
+	tar -C "$(CURDIR)/.tools" -xzf "$(CURDIR)/.tools/go.tgz"; \
+	rm -f "$(CURDIR)/.tools/go.tgz"; \
+	"$(LOCAL_GO)" version
 
 up:
 	$(COMPOSE) up -d
@@ -34,20 +77,20 @@ logs:
 ps:
 	$(COMPOSE) ps
 
-tidy:
-	$(GO) mod tidy
+tidy: ensure-go
+	"$(GO)" mod tidy
 
-test:
-	$(GO) test ./...
+test: ensure-go
+	"$(GO)" test ./...
 
-test-race:
-	$(GO) test -race ./...
+test-race: ensure-go
+	"$(GO)" test -race ./...
 
-build:
+build: ensure-go
 	mkdir -p bin
-	$(GO) build -o bin/api ./cmd/api
-	$(GO) build -o bin/worker ./cmd/worker
-	$(GO) build -o bin/migrate ./cmd/migrate
+	"$(GO)" build -o bin/api ./cmd/api
+	"$(GO)" build -o bin/worker ./cmd/worker
+	"$(GO)" build -o bin/migrate ./cmd/migrate
 
 migrate: build
 	./bin/migrate ./migrations
@@ -62,10 +105,10 @@ health:
 	@curl -sS -D - http://127.0.0.1:8080/healthz -o /tmp/bugsathi-api-health.json && echo && cat /tmp/bugsathi-api-health.json && echo
 	@curl -sS -D - http://127.0.0.1:8081/healthz -o /tmp/bugsathi-worker-health.json && echo && cat /tmp/bugsathi-worker-health.json && echo
 
-fmt:
-	$(GO) fmt ./...
+fmt: ensure-go
+	"$(GO)" fmt ./...
 
-vet:
-	$(GO) vet ./...
+vet: ensure-go
+	"$(GO)" vet ./...
 
 ci: fmt vet test
