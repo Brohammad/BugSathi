@@ -1,43 +1,50 @@
-# ADR 0006: gRPC for Internal Service-to-Service Communication
+# ADR 0006: Internal Communication & Worker Persistence
 
 ## Status
 
-Accepted
+Accepted (supersedes earlier “workers write via API gRPC” sketch)
 
 ## Context
 
-Workers need to report progress, write analysis results, and potentially call shared application services. Browser clients need REST/JSON. Using JSON everywhere internally loses typed contracts and makes future service extraction messier.
+Workers must update recording/report state after media and AI work. Routing every write through the HTTP API (even via gRPC) makes the API a bottleneck, couples worker availability to API deploy, and blurs bounded-context ownership.
+
+We still want typed contracts for future service extraction and for any *behavior* that truly spans contexts.
 
 ## Decision
 
-- **External (browser):** HTTP/JSON.
-- **Internal (worker ↔ API / future services):** **gRPC + Protobuf** under `api/proto/`.
-- Define protos early even while both sides share a monolith process (worker may call in-process implementations **or** gRPC — prefer gRPC client against local server to practice the real path).
-
-Initial services (sketch):
-
-```text
-RecordingService.UpdateStatus
-ReportService.UpsertAnalysis
-Health.Check
-```
+1. **Workers write Postgres directly** through their context’s repositories (same DB in the modular monolith).
+2. **API owns external HTTP** only (plus its own context writes: Auth, Projects, Uploads, Sharing).
+3. **gRPC + Protobuf** live under `api/proto/v1/` for:
+   - Health / readiness where useful
+   - Future cross-service **behavior** (not “please UPDATE this row for me”)
+   - Optional query APIs when contexts split into separate deployables
+4. Cross-context reactions inside the monolith prefer **domain events (Kafka/outbox)** over synchronous gRPC.
 
 ## Consequences
 
 **Positive**
 
-- Strong contracts; codegen; interview-relevant.
-- Extraction to real services later is mostly deployment.
+- Clear write ownership; no API hop on the hot pipeline path.
+- Matches how extracted workers would work in production (own DB access or own DB).
+- gRPC remains a real skill without misuse as a persistence proxy.
 
 **Negative**
 
-- Protobuf tooling overhead in M2.
-- Browser won’t speak gRPC (we don’t need it to).
+- Shared DB means migration discipline across contexts.
+- Must not let workers violate another context’s invariants (use repositories, not raw SQL across boundaries).
 
 ## Alternatives
 
 | Alternative | Rejected because |
 |-------------|------------------|
-| Internal HTTP/JSON only | Weaker contracts; less learning |
-| Workers write DB directly only | Faster short-term; bypasses application invariants |
-| Connect/gRPC-Web to browser | Unnecessary for MVP |
+| Workers → gRPC API → DB | API becomes write gateway / bottleneck |
+| Workers → raw SQL anywhere | Breaks encapsulation |
+| Only in-process function calls forever | Weakens extraction / contract practice |
+
+## Protobuf layout
+
+```text
+api/proto/v1/
+  health/v1/health.proto
+  # add domain protos when a real RPC behavior exists
+```

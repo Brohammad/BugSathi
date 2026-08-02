@@ -30,8 +30,8 @@ C4Container
 
     Container_Boundary(bugbot, "Bugbot") {
         Container(web, "Web UI", "React/TS (later)", "Upload & review UX")
-        Container(api, "API", "Go", "HTTP public + gRPC internal")
-        Container(worker, "Workers", "Go", "Media + AI Kafka consumers")
+        Container(api, "API", "Go", "HTTP public; own-context DB writes")
+        Container(worker, "Workers", "Go + ffmpeg", "Media + AI; direct DB writes")
         ContainerDb(pg, "PostgreSQL", "Postgres 16", "Metadata & state")
         ContainerDb(minio, "MinIO", "S3 API", "Recordings & frames")
         ContainerQueue(kafka, "Kafka", "KRaft", "Ordered pipeline events")
@@ -41,13 +41,12 @@ C4Container
 
     Rel(user, web, "HTTPS")
     Rel(web, api, "HTTPS/JSON")
-    Rel(api, pg, "SQL")
+    Rel(api, pg, "SQL (auth/projects/uploads/sharing)")
     Rel(api, minio, "S3 API / presign")
-    Rel(api, kafka, "Produce")
-    Rel(worker, kafka, "Consume")
+    Rel(api, kafka, "Produce via outbox")
+    Rel(worker, kafka, "Consume + produce")
     Rel(worker, minio, "Read/write objects")
-    Rel(worker, pg, "Update job state")
-    Rel(worker, api, "gRPC status/report writes")
+    Rel(worker, pg, "SQL (media/ai/reports)")
     Rel(worker, llm, "Analyze")
 ```
 
@@ -64,23 +63,23 @@ sequenceDiagram
     participant A as AI Worker
 
     U->>API: Create upload session
-    API->>DB: Insert recording UPLOADED/PENDING
+    API->>DB: Insert recording UPLOADING
     API-->>U: Presigned URL + recording_id
     U->>S3: PUT recording bytes
     U->>API: Complete upload
-    API->>DB: Mark UPLOADED
+    API->>DB: UPLOADED + outbox RecordingUploaded
     API->>K: RecordingUploaded (key=recording_id)
 
     K->>M: RecordingUploaded
-    M->>S3: GET source, PUT frames
-    M->>DB: MEDIA_PROCESSING → MEDIA_READY
-    M->>K: MediaReady (key=recording_id)
+    M->>S3: GET source, PUT frames (ffmpeg in worker)
+    M->>DB: PROCESSING → READY + artifacts + outbox
+    M->>K: FramesExtracted (key=recording_id)
 
-    K->>A: MediaReady
+    K->>A: FramesExtracted
     A->>S3: GET keyframes
-    A->>A: LLM Analyze (port)
-    A->>DB: Store analysis, mark READY
-    A->>K: AnalysisReady (optional notify)
+    A->>A: AnalyzerPort.Analyze
+    A->>DB: Report GENERATING → READY + outbox
+    A->>K: AnalysisCompleted / ReportGenerated
 
     U->>API: GET report
     API->>DB: Load report + artifacts

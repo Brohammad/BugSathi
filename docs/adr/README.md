@@ -7,7 +7,9 @@
 | [0003](0003-object-storage.md) | Object storage via S3 API (MinIO local) | Accepted |
 | [0004](0004-ai-provider-port.md) | AI provider port/adapter | Accepted |
 | [0005](0005-kafka-ordered-pipeline.md) | Kafka ordered pipeline per recording | Accepted |
-| [0006](0006-grpc-internal.md) | gRPC for service-to-service | Accepted |
+| [0006](0006-grpc-internal.md) | Workers write DB directly; gRPC for behavior | Accepted |
 | [0007](0007-local-first.md) | Local-first development & deploy parity | Accepted |
+| [0008](0008-observability-ids.md) | Correlation IDs from day one | Accepted |
+| [0009](0009-ffmpeg-media-worker.md) | ffmpeg only in Media Worker | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

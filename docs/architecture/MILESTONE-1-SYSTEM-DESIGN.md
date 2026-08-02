@@ -1,7 +1,7 @@
 # Milestone 1 — Project Planning & System Architecture
 
-> **Status:** Draft — awaiting approval before Milestone 2  
-> **Code:** None. Architecture and decisions only.
+> **Status:** Approved (with refinements)  
+> **Code:** None in M1. Architecture and decisions only.
 
 ---
 
@@ -66,7 +66,7 @@ Out of MVP (later): annotations, browser extension, live collab editing, SSO, bi
 | N2 | Durability | Upload ACK only after object storage + DB metadata persist |
 | N3 | Ordering | Per-recording pipeline stages never race |
 | N4 | Idempotency | Replayed Kafka messages must not duplicate reports |
-| N5 | Observability | Structured logs + metrics + traces from day one (wired in M11) |
+| N5 | Observability | `request_id` / `recording_id` / `correlation_id` in logs from M2; full metrics/traces in M11 |
 | N6 | Security | Authn/z, signed share links, no secrets in repo |
 | N7 | Testability | Unit + integration tests; interfaces at boundaries |
 | N8 | Extensibility | Swap AI provider / storage without rewriting domain |
@@ -80,7 +80,8 @@ Out of MVP (later): annotations, browser extension, live collab editing, SSO, bi
 2. **Local hardware** — video processing and AI calls must be bounded (chunk sizes, timeouts).
 3. **Cost control** — AI behind an interface; mock provider for tests/offline.
 4. **Kafka locally** — accept operational complexity for the learning payoff (ordering, consumer groups).
-5. **gRPC for internal** — HTTP/JSON for browser-facing API only.
+5. **HTTP for browsers; workers write their own DB** — gRPC reserved for cross-service behavior later (`api/proto/v1/`).
+6. **ffmpeg only in Media Worker** — never on the API request path.
 
 ---
 
@@ -99,13 +100,14 @@ Out of MVP (later): annotations, browser extension, live collab editing, SSO, bi
 └──────────┘     └───────────┘     └────────────┘     └─────────────┘
 ```
 
-**States of a recording/report:**
+**States of a recording/report:** see [STATE-MACHINES.md](STATE-MACHINES.md).
 
 ```text
-UPLOADED → QUEUED → MEDIA_PROCESSING → AI_ANALYZING → READY → SHARED
-                ↘ FAILED (retryable / terminal)
+Recording: UPLOADING → UPLOADED → PROCESSING → READY | FAILED
+Report:    PENDING → GENERATING → READY | FAILED
 ```
 
+Further detail: [BOUNDED-CONTEXTS.md](BOUNDED-CONTEXTS.md), [AGGREGATES.md](AGGREGATES.md), [DATA-LIFECYCLE.md](DATA-LIFECYCLE.md).
 ---
 
 ## 7. Why Modular Monolith First (Not Microservices)
@@ -132,7 +134,7 @@ FAANG often starts **monolith-shaped** and extracts services when a module’s s
 
 ### Our choice
 
-**Modular monolith** with clear packages/modules + **Kafka** for async boundaries + **gRPC interfaces** ready for extraction.
+**Modular monolith** with clear bounded contexts + **Kafka** for async boundaries. Workers persist via **their own repositories**. gRPC/protobuf under `api/proto/v1/` for future behavioral RPCs — not as a write gateway.
 
 ```text
 Today: one deployable "api" process + workers (can be same binary, different entrypoints)
@@ -160,34 +162,22 @@ Tomorrow: extract media-worker and ai-worker as separate deployments without rew
                                            ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                     Modular Monolith (API process)                       │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────────────────┐ │
-│  │   Auth     │ │  Projects  │ │  Uploads   │ │  Reports / Sharing     │ │
-│  │  module    │ │  module    │ │  module    │ │  module                │ │
-│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └───────────┬────────────┘ │
-│        │              │              │                    │              │
-│        └──────────────┴──────────────┴────────────────────┘              │
-│                              Domain + Ports                              │
+│  Auth · Projects · Uploads · Reports · Sharing                           │
+│  (HTTP edge + own-context DB writes + outbox produce)                    │
 └───────────────┬──────────────────────┬───────────────────┬───────────────┘
                 │                      │                   │
                 ▼                      ▼                   ▼
          ┌─────────────┐      ┌──────────────┐    ┌────────────────┐
          │ PostgreSQL  │      │ MinIO (S3)   │    │ Kafka          │
-         │  metadata   │      │  objects     │    │  events       │
-         └─────────────┘      └──────────────┘    └───────┬────────┘
-                                                          │
-                          ┌───────────────────────────────┼────────────────┐
-                          │                               ▼                │
-                          │                    Worker process(es)          │
-                          │         ┌─────────────────┐  ┌──────────────┐  │
-                          │         │ Media processor │  │ AI analyzer  │  │
-                          │         │ (ffmpeg/frames) │  │ (LLM port)   │  │
-                          │         └────────┬────────┘  └──────┬───────┘  │
-                          │                  │                  │          │
-                          │                  └────────┬─────────┘          │
-                          │                           ▼                    │
-                          │                    gRPC internal APIs          │
-                          │              (status updates, report write)    │
-                          └────────────────────────────────────────────────┘
+         │  metadata   │◀─────│  objects     │    │  events       │
+         └──────▲──────┘      └──────▲───────┘    └───────┬────────┘
+                │                    │                    │
+                │                    │                    ▼
+                │             ┌──────┴─────────────────────────────┐
+                │             │         Worker process(es)         │
+                └─────────────│  Media (ffmpeg) · AI (AnalyzerPort)│
+                  direct repo │  own DB txs + outbox events        │
+                  writes      └────────────────────────────────────┘
 ```
 
 **Local-first:** Docker Compose runs Postgres, MinIO, Kafka (KRaft), API, workers. Cloud later swaps MinIO→S3, Compose→K8s, same ports.
@@ -207,7 +197,7 @@ Tomorrow: extract media-worker and ai-worker as separate deployments without rew
 | `sharing` | Public tokens, link expiry | share_links |
 | `platform` | config, logging, DI, health | — |
 
-Workers consume Kafka; they call into domain via **ports** (interfaces), not by reaching into DB tables of other modules casually. Cross-module DB access is allowed in a monolith **only through repository interfaces owned by that module**.
+Workers consume Kafka and persist through **their context repositories** (direct Postgres). See [BOUNDED-CONTEXTS.md](BOUNDED-CONTEXTS.md). Cross-context table access only via owning context’s interfaces.
 
 ---
 
@@ -228,16 +218,14 @@ Key:         recording_id
 ### Happy path
 
 ```text
-1. Client uploads bytes → MinIO (presigned PUT or API stream)
-2. API writes Recording(status=UPLOADED) in Postgres
-3. API produces Kafka: RecordingUploaded { recording_id, project_id, object_key }
-4. Media worker consumes → extracts frames → writes artifacts to MinIO
-5. Media worker updates DB → produces: MediaReady { recording_id, frame_keys[] }
-6. AI worker consumes → calls LLM port → stores summary + steps
-7. AI worker produces: AnalysisReady → Reports module marks READY
-8. User opens report / creates share link
+1. Client uploads bytes → MinIO (presigned PUT)
+2. API writes Recording(UPLOADED) + outbox RecordingUploaded
+3. Media worker: ffmpeg → frames → DB + outbox FramesExtracted
+4. AI worker: AnalyzerPort → analyses/reports + AnalysisCompleted / ReportGenerated
+5. User opens report / creates ShareLink (ShareCreated)
 ```
 
+Full walkthrough: [DATA-LIFECYCLE.md](DATA-LIFECYCLE.md). Event names: [EVENT-FLOW.md](EVENT-FLOW.md).
 ### Failure scenarios
 
 | Failure | Behavior |
@@ -346,14 +334,14 @@ Cloud migration: change endpoint + credentials; keep key schema.
 ## 15. Folder Structure (Target)
 
 ```text
-bugbot/
+bugsathi/   # repo: BugSathi
 ├── docs/
-│   ├── adr/                      # Architecture Decision Records
-│   ├── architecture/             # Diagrams & system design
-│   └── roadmap/                  # Milestone plan
+│   ├── adr/
+│   ├── architecture/
+│   └── roadmap/
 ├── cmd/
-│   ├── api/                      # HTTP + gRPC server entrypoint
-│   └── worker/                   # Kafka consumers entrypoint
+│   ├── api/                      # HTTP entrypoint (slim; no ffmpeg)
+│   └── worker/                   # Kafka consumers (ffmpeg in this image)
 ├── internal/
 │   ├── auth/
 │   ├── projects/
@@ -362,33 +350,32 @@ bugbot/
 │   ├── ai/
 │   ├── reports/
 │   ├── sharing/
-│   ├── platform/                 # config, logging, db, kafka, di
-│   └── pkg/                      # small shared libs (careful: avoid dump)
+│   └── platform/                 # config, logging, db, kafka, correlation IDs
 ├── api/
-│   ├── proto/                    # gRPC definitions
+│   ├── proto/v1/                 # versioned protobufs
 │   └── openapi/                  # public HTTP contract (later)
-├── migrations/                   # SQL migrations
+├── migrations/
 ├── deploy/
-│   ├── docker/                   # Dockerfiles
-│   └── compose/                  # docker-compose.yml
+│   ├── docker/
+│   └── compose/
 ├── scripts/
 ├── test/
 │   ├── integration/
 │   └── testdata/
-├── web/                          # frontend (later milestone)
+├── web/
 ├── Makefile
 ├── go.mod
 └── README.md
 ```
 
-Clean architecture per module:
+Clean architecture per context:
 
 ```text
 internal/uploads/
-  domain/       # entities, invariants
+  domain/       # entities, aggregates, state transitions
   port/         # interfaces (repos, storage, bus)
   service/      # use cases
-  adapter/      # postgres, s3, kafka, http handlers
+  adapter/      # postgres, s3, http handlers
 ```
 
 ---
