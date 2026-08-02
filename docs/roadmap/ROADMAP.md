@@ -66,8 +66,9 @@
 - Migration `0006_share_links.sql`
 
 ### M10 — Realtime Collaboration
-- Presence or comments via SSE/WebSocket
-- Auth on channels; fanout design
+- Report comments + SSE presence (`GET .../events`)
+- Auth on channels; in-process hub (Redis later)
+- Migration `0007_report_comments.sql`
 
 ### M11 — Observability
 - Metrics (RED), traces (OTLP), log correlation IDs

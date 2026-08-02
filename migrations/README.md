@@ -15,3 +15,4 @@ make migrate
 | `0004_media_artifacts.sql` | M6 — media_artifacts |
 | `0005_ai_reports.sql` | M7 — analyses + reports |
 | `0006_share_links.sql` | M9 — share_links |
+| `0007_report_comments.sql` | M10 — report_comments |

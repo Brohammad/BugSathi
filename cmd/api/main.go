@@ -15,6 +15,10 @@ import (
 	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/password"
 	authsvc "github.com/Brohammad/BugSathi/internal/auth/service"
+	collabhttp "github.com/Brohammad/BugSathi/internal/collab/adapter/httpapi"
+	collabhub "github.com/Brohammad/BugSathi/internal/collab/adapter/hub"
+	collabpg "github.com/Brohammad/BugSathi/internal/collab/adapter/postgres"
+	collabsvc "github.com/Brohammad/BugSathi/internal/collab/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
 	"github.com/Brohammad/BugSathi/internal/platform/health"
@@ -112,6 +116,15 @@ func main() {
 	)
 	shareHandler := sharehttp.NewHandler(shareService)
 
+	collabService := collabsvc.New(
+		collabpg.NewRepo(pool),
+		uploadaccess.New(projectService),
+		collabpg.NewReportGuard(pool),
+		collabpg.NewAuthorLookup(pool),
+		collabhub.New(),
+	)
+	collabHandler := collabhttp.NewHandler(collabService)
+
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
 	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicRecordingUploaded, 3); err != nil {
@@ -141,6 +154,7 @@ func main() {
 	uploadHandler.RegisterRoutes(mux, protect)
 	reportHandler.RegisterRoutes(mux, protect)
 	shareHandler.RegisterRoutes(mux, protect)
+	collabHandler.RegisterRoutes(mux, protect)
 
 	server := &http.Server{
 		Addr:    cfg.HTTPAddr,
