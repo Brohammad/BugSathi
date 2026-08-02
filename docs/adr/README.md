@@ -19,5 +19,7 @@
 | [0015](0015-ai-analysis.md) | AI AnalyzerPort + mock/openai | Accepted |
 | [0016](0016-bug-report-api.md) | Bug report read API | Accepted |
 | [0017](0017-sharing.md) | Shareable report links | Accepted |
+| [0018](0018-realtime-collaboration.md) | Realtime comments + SSE presence | Accepted |
+| [0019](0019-observability-stack.md) | Prometheus metrics + OTLP traces | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

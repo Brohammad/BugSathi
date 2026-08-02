@@ -91,6 +91,18 @@ Workers that belong to a context write **their own** tables via repositories —
 
 ---
 
+## Collaboration
+
+| | |
+|--|--|
+| **Responsibilities** | Report comments, SSE fanout, ephemeral presence per report |
+| **Owned tables** | `report_comments` |
+| **Publishes** | `CommentCreated` (outbox); realtime SSE events |
+| **Consumes** | — |
+| **Public interface** | HTTP: comments CRUD-lite + `GET .../events` (SSE); `Hub` port for fanout |
+
+---
+
 ## Platform
 
 | | |

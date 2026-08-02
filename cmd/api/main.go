@@ -15,12 +15,17 @@ import (
 	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/password"
 	authsvc "github.com/Brohammad/BugSathi/internal/auth/service"
+	collabhttp "github.com/Brohammad/BugSathi/internal/collab/adapter/httpapi"
+	collabhub "github.com/Brohammad/BugSathi/internal/collab/adapter/hub"
+	collabpg "github.com/Brohammad/BugSathi/internal/collab/adapter/postgres"
+	collabsvc "github.com/Brohammad/BugSathi/internal/collab/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
 	"github.com/Brohammad/BugSathi/internal/platform/health"
 	"github.com/Brohammad/BugSathi/internal/platform/httpx"
 	platformkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
+	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
 	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
 	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
@@ -37,6 +42,7 @@ import (
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
 	"github.com/Brohammad/BugSathi/internal/uploads/domain"
 	uploadsvc "github.com/Brohammad/BugSathi/internal/uploads/service"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func main() {
@@ -54,6 +60,16 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	shutdownTrace, err := observability.SetupTracing(ctx, "bugsathi-api", cfg.Observability.OTLPEndpoint)
+	if err != nil {
+		log.Error("tracing setup failed", "error", err)
+		os.Exit(1)
+	}
+	defer func() { _ = shutdownTrace(context.Background()) }()
+
+	reg := prometheus.NewRegistry()
+	metrics := observability.NewMetrics(reg)
 
 	pool, err := db.Connect(ctx, cfg.Postgres.DSN())
 	if err != nil {
@@ -112,6 +128,15 @@ func main() {
 	)
 	shareHandler := sharehttp.NewHandler(shareService)
 
+	collabService := collabsvc.New(
+		collabpg.NewRepo(pool),
+		uploadaccess.New(projectService),
+		collabpg.NewReportGuard(pool),
+		collabpg.NewAuthorLookup(pool),
+		collabhub.New(),
+	)
+	collabHandler := collabhttp.NewHandler(collabService)
+
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
 	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicRecordingUploaded, 3); err != nil {
@@ -119,6 +144,7 @@ func main() {
 	}
 	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
 	go relay.Run(ctx)
+	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
 
 	protect := func(next http.Handler) http.Handler {
 		return authhttp.RequireAccess(authService, next)
@@ -136,15 +162,17 @@ func main() {
 		}
 		health.WriteReady(w, true, map[string]string{"postgres": "up"})
 	})
+	mux.Handle("GET /metrics", observability.Handler(reg))
 	authHandler.RegisterRoutes(mux)
 	projectHandler.RegisterRoutes(mux, protect)
 	uploadHandler.RegisterRoutes(mux, protect)
 	reportHandler.RegisterRoutes(mux, protect)
 	shareHandler.RegisterRoutes(mux, protect)
+	collabHandler.RegisterRoutes(mux, protect)
 
 	server := &http.Server{
 		Addr:    cfg.HTTPAddr,
-		Handler: httpx.RequestIDs(mux),
+		Handler: httpx.RequestIDs(observability.Middleware("api", metrics, mux)),
 	}
 
 	errCh := make(chan error, 1)

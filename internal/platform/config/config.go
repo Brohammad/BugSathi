@@ -14,11 +14,16 @@ type Config struct {
 	HTTPAddr string
 	LogLevel string
 
-	Postgres PostgresConfig
-	MinIO    MinIOConfig
-	Kafka    KafkaConfig
-	Auth     AuthConfig
-	AI       AIConfig
+	Postgres      PostgresConfig
+	MinIO         MinIOConfig
+	Kafka         KafkaConfig
+	Auth          AuthConfig
+	AI            AIConfig
+	Observability ObservabilityConfig
+}
+
+type ObservabilityConfig struct {
+	OTLPEndpoint string // e.g. http://localhost:4318/v1/traces ; empty disables export
 }
 
 type AIConfig struct {
@@ -102,6 +107,9 @@ func Load() (Config, error) {
 			Model:     getenv("AI_MODEL", "gpt-4o-mini"),
 			Timeout:   getenvDuration("AI_TIMEOUT", 60*time.Second),
 			MaxFrames: getenvInt("AI_MAX_FRAMES", 5),
+		},
+		Observability: ObservabilityConfig{
+			OTLPEndpoint: getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
 		},
 	}
 

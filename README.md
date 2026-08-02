@@ -4,7 +4,7 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 9 — Sharing**
+**Milestone 11 — Observability**
 
 ```bash
 make up && make migrate && make run-api
