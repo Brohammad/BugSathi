@@ -21,5 +21,6 @@
 | [0017](0017-sharing.md) | Shareable report links | Accepted |
 | [0018](0018-realtime-collaboration.md) | Realtime comments + SSE presence | Accepted |
 | [0019](0019-observability-stack.md) | Prometheus metrics + OTLP traces | Accepted |
+| [0020](0020-production-deployment.md) | Production Compose + K8s sketches | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

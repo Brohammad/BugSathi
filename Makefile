@@ -2,6 +2,7 @@
 # Requires: Docker Compose, Go 1.24+ (system Go OR .tools/go)
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
+COMPOSE_PROD := docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod
 LOCAL_GO := $(CURDIR)/.tools/go/bin/go
 
 # Prefer project-local toolchain, then PATH.
@@ -11,13 +12,17 @@ else
   GO ?= go
 endif
 
-.PHONY: help ensure-go bootstrap-go up down logs ps tidy test test-race build run-api run-worker health migrate fmt vet ci
+.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race build build-images run-api run-worker health migrate fmt vet ci
 
 help:
 	@echo "Targets:"
 	@echo "  make bootstrap-go Download Go into .tools/go (if missing)"
-	@echo "  make up           Start Postgres, MinIO, Redpanda, Prometheus, Grafana, Jaeger"
-	@echo "  make down         Stop dependencies"
+	@echo "  make up           Start local deps (Postgres, MinIO, Redpanda, obs)"
+	@echo "  make down         Stop local deps"
+	@echo "  make up-prod      Start production-like Compose (needs .env.prod)"
+	@echo "  make up-prod-obs  Prod Compose + Prometheus/Grafana profile"
+	@echo "  make down-prod    Stop production-like Compose"
+	@echo "  make build-images Build api/worker/migrate Docker images"
 	@echo "  make logs         Tail compose logs"
 	@echo "  make tidy         go mod tidy"
 	@echo "  make test         Run unit tests"
@@ -70,6 +75,24 @@ up:
 
 down:
 	$(COMPOSE) down
+
+up-prod:
+	@test -f .env.prod || (echo "Copy .env.prod.example to .env.prod and set secrets"; exit 1)
+	$(COMPOSE_PROD) up -d --build
+	@echo "API :8080  Worker :8081  (prod compose)"
+
+up-prod-obs:
+	@test -f .env.prod || (echo "Copy .env.prod.example to .env.prod and set secrets"; exit 1)
+	$(COMPOSE_PROD) --profile obs up -d --build
+	@echo "API :8080  Worker :8081  Prometheus :9090  Grafana :3000"
+
+down-prod:
+	$(COMPOSE_PROD) --profile obs down
+
+build-images:
+	docker build -f deploy/docker/Dockerfile.api -t bugsathi/api:latest .
+	docker build -f deploy/docker/Dockerfile.worker -t bugsathi/worker:latest .
+	docker build -f deploy/docker/Dockerfile.migrate -t bugsathi/migrate:latest .
 
 logs:
 	$(COMPOSE) logs -f --tail=200

@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bugsathi-api
+  namespace: bugsathi
+  labels:
+    app: bugsathi-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bugsathi-api
+  template:
+    metadata:
+      labels:
+        app: bugsathi-api
+    spec:
+      containers:
+        - name: api
+          image: bugsathi/api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: bugsathi-config
+            - secretRef:
+                name: bugsathi-secrets
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bugsathi-api
+  namespace: bugsathi
+spec:
+  selector:
+    app: bugsathi-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

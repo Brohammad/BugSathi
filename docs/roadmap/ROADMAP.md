@@ -77,8 +77,10 @@
 - Outbox lag + AI latency + pipeline stage metrics
 
 ### M12 — Deployment
-- Production Compose or K8s manifests
-- Secrets, migrations job, health probes
+- Production Compose (`docker-compose.prod.yml`) with migrate job + api + worker
+- Docker HEALTHCHECK / Compose readiness on `/healthz` + `/readyz`
+- Secrets via `.env.prod` (gitignored); K8s Secret/ConfigMap sketches
+- `make up-prod` / `make build-images`
 
 ### M13 — Performance Optimization
 - Profiling, connection pools, keyframe selection

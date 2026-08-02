@@ -4,10 +4,12 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 11 — Observability**
+**Milestone 12 — Deployment**
 
 ```bash
-make up && make migrate && make run-api
+cp .env.prod.example .env.prod
+make up-prod
+curl -s localhost:8080/readyz
 ```
 
 ```bash
