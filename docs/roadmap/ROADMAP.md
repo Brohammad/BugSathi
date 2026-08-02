@@ -61,8 +61,9 @@
 - `GET /v1/projects/{id}/recordings/{rid}/report`
 
 ### M9 — Sharing
-- Share tokens, expiry, revoke
-- Public report view (limited fields)
+- Share tokens, optional expiry, revoke
+- Public `GET /s/{token}` (limited fields + presigned frames)
+- Migration `0006_share_links.sql`
 
 ### M10 — Realtime Collaboration
 - Presence or comments via SSE/WebSocket

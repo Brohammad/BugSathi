@@ -1,0 +1,49 @@
+package service_test
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/Brohammad/BugSathi/internal/sharing/adapter/memory"
+	"github.com/Brohammad/BugSathi/internal/sharing/domain"
+	"github.com/Brohammad/BugSathi/internal/sharing/port"
+	"github.com/Brohammad/BugSathi/internal/sharing/service"
+	"github.com/google/uuid"
+)
+
+func TestShareCreatePublicRevoke(t *testing.T) {
+	repo := memory.NewRepo()
+	projectID := uuid.New()
+	reportID := uuid.New()
+	userID := uuid.New()
+	reports := memory.NewReports(port.PublicReport{
+		ReportID: reportID, ProjectID: projectID, Status: "READY",
+		Title: "Bug", Summary: "Sum", Steps: json.RawMessage(`["a"]`),
+		Frames: []port.PublicFrame{{Ordinal: 0, StorageKey: "f.jpg", ContentType: "image/jpeg"}},
+		ThumbKey: "t.jpg",
+	})
+	svc := service.New(repo, memory.AccessOK{}, reports, memory.Signer{})
+
+	exp := 3600 * time.Second
+	share, err := svc.Create(context.Background(), userID, projectID, reportID, &exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.Token == "" || share.URLPath != "/s/"+share.Token {
+		t.Fatalf("%+v", share)
+	}
+
+	view, err := svc.PublicGet(context.Background(), share.Token)
+	if err != nil || view.Title != "Bug" || len(view.Frames) != 1 || view.Frames[0].URL == "" {
+		t.Fatalf("%+v %v", view, err)
+	}
+
+	if err := svc.Revoke(context.Background(), userID, projectID, share.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.PublicGet(context.Background(), share.Token); err != domain.ErrShareInactive {
+		t.Fatalf("got %v", err)
+	}
+}
