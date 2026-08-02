@@ -1,0 +1,26 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.out
+
+# Dependencies
+vendor/
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Local toolchains (optional)
+.tools/
+
+# Compose volumes / data
+data/

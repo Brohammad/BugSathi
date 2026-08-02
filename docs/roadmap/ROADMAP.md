@@ -14,11 +14,12 @@
 **Exit:** architecture approved.
 
 ### M2 — Development Environment
-- Docker Compose: Postgres, MinIO, Kafka, (optional) Mailhog
-- `cmd/api` + `cmd/worker` skeletons with `/healthz`
-- Makefile: `up`, `down`, `test`, `migrate`
-- Structured logging + config loading
-- CI-ready layout (lint, test scripts)
+- Docker Compose: Postgres, MinIO, Redpanda (Kafka API)
+- `cmd/api` + `cmd/worker` with `/healthz` + `/readyz`
+- Makefile: `up`, `down`, `test`, `build`, `ci`
+- Structured logging + config + request/correlation IDs
+- Versioned proto stub `api/proto/v1/health`
+- GitHub Actions CI (vet/test/build)
 
 ### M3 — Authentication
 - User model, password hashing (argon2id)

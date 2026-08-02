@@ -247,7 +247,7 @@ Full walkthrough: [DATA-LIFECYCLE.md](DATA-LIFECYCLE.md). Event names: [EVENT-FL
 | RPC | gRPC + protobuf | Typed internal contracts; future service extraction |
 | DB | **PostgreSQL 16** | Relational integrity for users/projects/reports; JSONB where useful |
 | Object storage | **MinIO** (S3 API) | Local-first; swap to AWS S3 with endpoint change |
-| Messaging | **Apache Kafka** | Ordering via keys, replay, consumer groups — curriculum core |
+| Messaging | **Apache Kafka API** via **Redpanda** locally (ADR-0010) | Ordering via keys, replay, consumer groups — curriculum core |
 | Media | ffmpeg (sidecar/CLI) | Industry standard for frame extraction |
 | AI | Port + OpenAI-compatible adapter (+ mock) | Provider-agnostic |
 | Auth | JWT access + refresh (or session cookies) | Decide in M3 ADR |

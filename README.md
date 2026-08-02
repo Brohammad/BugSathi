@@ -4,20 +4,30 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 1 — Approved** (architecture locked with refinements)  
-**Next:** Milestone 2 — Development Environment
+**Milestone 1 — Approved**  
+**Milestone 2 — Development Environment** (this tree)
 
 | Doc | Path |
 |-----|------|
 | System design | [docs/architecture/MILESTONE-1-SYSTEM-DESIGN.md](docs/architecture/MILESTONE-1-SYSTEM-DESIGN.md) |
 | Data lifecycle | [docs/architecture/DATA-LIFECYCLE.md](docs/architecture/DATA-LIFECYCLE.md) |
-| Bounded contexts | [docs/architecture/BOUNDED-CONTEXTS.md](docs/architecture/BOUNDED-CONTEXTS.md) |
-| Aggregates | [docs/architecture/AGGREGATES.md](docs/architecture/AGGREGATES.md) |
-| State machines | [docs/architecture/STATE-MACHINES.md](docs/architecture/STATE-MACHINES.md) |
-| Event flow | [docs/architecture/EVENT-FLOW.md](docs/architecture/EVENT-FLOW.md) |
-| Diagrams | [docs/architecture/DIAGRAMS.md](docs/architecture/DIAGRAMS.md) |
+| Dev environment | [docs/architecture/MILESTONE-2-DEV-ENVIRONMENT.md](docs/architecture/MILESTONE-2-DEV-ENVIRONMENT.md) |
 | ADRs | [docs/adr/](docs/adr/) |
 | Roadmap | [docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md) |
+
+## Quick start (Milestone 2)
+
+```bash
+cp .env.example .env
+make up          # Postgres, MinIO, Redpanda
+make build
+make run-api     # :8080  → GET /healthz /readyz
+make run-worker  # :8081  → GET /healthz /readyz
+make test
+make down
+```
+
+Requires Docker Compose and Go 1.24+. A local toolchain may live under `.tools/go` (gitignored).
 
 ## MVP capabilities (planned)
 
