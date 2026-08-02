@@ -15,5 +15,6 @@
 | [0011](0011-authentication.md) | Argon2id + JWT + rotating refresh | Accepted |
 | [0012](0012-projects.md) | Projects & membership roles | Accepted |
 | [0013](0013-recording-upload.md) | Presigned upload + transactional outbox | Accepted |
+| [0014](0014-media-pipeline.md) | Media worker + ffmpeg frames | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

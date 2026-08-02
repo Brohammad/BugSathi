@@ -42,10 +42,11 @@
 - Migration `0003_recordings.sql`
 
 ### M6 — Media Processing Pipeline
-- ffmpeg frame extraction
-- Artifact keys in DB
-- Ordered consume; retries; DLQ hook
-- Integration test with sample video
+- Kafka consumer for `RecordingUploaded`
+- ffmpeg frame extraction in worker only
+- Artifact keys in DB; recording → READY
+- Ordered consume; idempotent redelivery
+- Migration `0004_media_artifacts.sql`
 
 ### M7 — AI Analysis Pipeline
 - `AnalyzerPort` + OpenAI-compatible + Mock
