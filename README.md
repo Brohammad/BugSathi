@@ -4,13 +4,15 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 13 — Performance**
+**Milestone 15 — DLQ + reprocess**
 
 ```bash
 cp .env.prod.example .env.prod
 make up-prod
 curl -s localhost:8080/readyz
-# optional: ENABLE_PPROF=true → /debug/pprof/
+# owner reprocess a FAILED recording:
+# curl -X POST localhost:8080/v1/projects/$PID/recordings/$RID/reprocess \
+#   -H "Authorization: Bearer $ACCESS"
 ```
 
 ```bash

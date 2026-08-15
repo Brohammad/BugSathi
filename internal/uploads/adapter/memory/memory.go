@@ -119,6 +119,22 @@ func (r *RecordingRepo) CompleteWithOutbox(
 	return rec, nil
 }
 
+func (r *RecordingRepo) InsertOutbox(
+	_ context.Context,
+	eventTopic, partitionKey string,
+	payload []byte,
+	correlationID string,
+) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := atomic.AddInt64(&r.nextOutbox, 1)
+	r.outbox.add(port.OutboxMessage{
+		ID: id, Topic: eventTopic, PartitionKey: partitionKey,
+		Payload: payload, CorrelationID: correlationID, CreatedAt: time.Now(),
+	})
+	return nil
+}
+
 type Storage struct {
 	mu   sync.Mutex
 	objs map[string][]byte
@@ -153,9 +169,20 @@ func (s *Storage) Put(key, contentType string, body []byte) {
 type AccessOK struct{}
 
 func (AccessOK) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (AccessOK) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error  { return nil }
 
 type AccessDeny struct{}
 
 func (AccessDeny) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error {
+	return domain.ErrForbidden
+}
+func (AccessDeny) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error {
+	return domain.ErrForbidden
+}
+
+type AccessMemberOnly struct{}
+
+func (AccessMemberOnly) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (AccessMemberOnly) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error {
 	return domain.ErrForbidden
 }

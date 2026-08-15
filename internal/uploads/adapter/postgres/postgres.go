@@ -96,6 +96,18 @@ func (r *RecordingRepo) CompleteWithOutbox(
 	return out, nil
 }
 
+func (r *RecordingRepo) InsertOutbox(
+	ctx context.Context,
+	eventTopic, partitionKey string,
+	payload []byte,
+	correlationID string,
+) error {
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO outbox (topic, partition_key, payload, correlation_id)
+		VALUES ($1, $2, $3, $4)`, eventTopic, partitionKey, payload, correlationID)
+	return err
+}
+
 type OutboxRepo struct {
 	pool *pgxpool.Pool
 }

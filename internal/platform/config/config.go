@@ -99,8 +99,9 @@ func (c RateLimitConfig) Enabled() bool {
 }
 
 type KafkaRetryConfig struct {
-	Base time.Duration
-	Max  time.Duration
+	Base        time.Duration
+	Max         time.Duration
+	MaxAttempts int // after this many handler failures, message goes to DLQ (0 = default 5)
 }
 
 // Load reads configuration from environment variables with safe local defaults.
@@ -161,8 +162,9 @@ func Load() (Config, error) {
 				Window:    getenvDuration("RATE_LIMIT_WINDOW", time.Minute),
 			},
 			KafkaRetry: KafkaRetryConfig{
-				Base: getenvDuration("KAFKA_RETRY_BASE", time.Second),
-				Max:  getenvDuration("KAFKA_RETRY_MAX", 30*time.Second),
+				Base:        getenvDuration("KAFKA_RETRY_BASE", time.Second),
+				Max:         getenvDuration("KAFKA_RETRY_MAX", 30*time.Second),
+				MaxAttempts: getenvInt("KAFKA_RETRY_MAX_ATTEMPTS", 5),
 			},
 		},
 	}

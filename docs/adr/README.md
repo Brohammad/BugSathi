@@ -24,5 +24,6 @@
 | [0020](0020-production-deployment.md) | Production Compose + K8s sketches | Accepted |
 | [0021](0021-performance.md) | Pools, keyframes, report cache, pprof | Accepted |
 | [0022](0022-production-hardening.md) | Rate limits, headers, backoff, SLOs | Accepted |
+| [0023](0023-dlq-reprocess.md) | Kafka DLQ + owner reprocess API | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

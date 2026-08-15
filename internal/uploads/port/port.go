@@ -14,6 +14,8 @@ type RecordingRepository interface {
 	Update(ctx context.Context, rec domain.Recording) (domain.Recording, error)
 	// CompleteInTx transitions to UPLOADED and inserts outbox in one transaction.
 	CompleteWithOutbox(ctx context.Context, rec domain.Recording, eventTopic, partitionKey string, payload []byte, correlationID string) (domain.Recording, error)
+	// InsertOutbox appends an outbox row without changing recording status (reprocess).
+	InsertOutbox(ctx context.Context, eventTopic, partitionKey string, payload []byte, correlationID string) error
 }
 
 type OutboxRepository interface {
@@ -37,6 +39,7 @@ type ObjectStorage interface {
 
 type ProjectAccess interface {
 	EnsureMember(ctx context.Context, userID, projectID uuid.UUID) error
+	EnsureOwner(ctx context.Context, userID, projectID uuid.UUID) error
 }
 
 type EventPublisher interface {

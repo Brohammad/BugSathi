@@ -156,6 +156,12 @@ func (s *Service) EnsureMember(ctx context.Context, userID, projectID uuid.UUID)
 	return err
 }
 
+// EnsureOwner is used by privileged mutations (e.g. recording reprocess).
+func (s *Service) EnsureOwner(ctx context.Context, userID, projectID uuid.UUID) error {
+	_, err := s.requireOwner(ctx, projectID, userID)
+	return err
+}
+
 func (s *Service) requireMember(ctx context.Context, projectID, userID uuid.UUID) (domain.Member, error) {
 	m, err := s.repo.GetMembership(ctx, projectID, userID)
 	if err != nil {

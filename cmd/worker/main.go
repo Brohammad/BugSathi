@@ -87,6 +87,8 @@ func main() {
 		mediadomain.TopicFramesExtracted,
 		aidomain.TopicAnalysisCompleted,
 		aidomain.TopicReportGenerated,
+		platformkafka.DLQTopic(mediadomain.TopicRecordingUploaded),
+		platformkafka.DLQTopic(mediadomain.TopicFramesExtracted),
 	} {
 		if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, topic, 3); err != nil {
 			log.Warn("ensure topic", "topic", topic, "error", err)
@@ -99,7 +101,7 @@ func main() {
 	go relay.Run(ctx)
 	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
 
-	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics)
+	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub)
 	defer mediaConsumer.Close()
 	go func() {
 		if err := mediaConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -108,7 +110,7 @@ func main() {
 		}
 	}()
 
-	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics)
+	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics, kafkaPub)
 	defer aiConsumer.Close()
 	go func() {
 		if err := aiConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {

@@ -27,8 +27,9 @@ type Metrics struct {
 	PipelineJobs     *prometheus.CounterVec
 	PipelineDuration *prometheus.HistogramVec
 	AIDuration       *prometheus.HistogramVec
-	OutboxPending    prometheus.Gauge
+	OutboxPending     prometheus.Gauge
 	RateLimitRejected *prometheus.CounterVec
+	DLQPublished      *prometheus.CounterVec
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -64,8 +65,12 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "bugsathi_rate_limit_rejected_total",
 			Help: "Requests rejected by rate limiter.",
 		}, []string{"route"}),
+		DLQPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "bugsathi_dlq_published_total",
+			Help: "Messages published to dead-letter topics.",
+		}, []string{"source_topic"}),
 	}
-	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending, m.RateLimitRejected)
+	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending, m.RateLimitRejected, m.DLQPublished)
 	return m
 }
 
@@ -97,6 +102,13 @@ func (m *Metrics) IncRateLimited(route string) {
 		return
 	}
 	m.RateLimitRejected.WithLabelValues(route).Inc()
+}
+
+func (m *Metrics) IncDLQ(sourceTopic string) {
+	if m == nil || m.DLQPublished == nil {
+		return
+	}
+	m.DLQPublished.WithLabelValues(sourceTopic).Inc()
 }
 
 func statusClass(code int) string {

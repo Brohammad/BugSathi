@@ -8,6 +8,7 @@ Runbooks and SLOs for on-call and production readiness drills.
 | [runbooks/postgres-down.md](runbooks/postgres-down.md) | Readiness failure when Postgres is unavailable |
 | [runbooks/api-errors.md](runbooks/api-errors.md) | Elevated HTTP 5xx or latency |
 | [runbooks/pipeline-stuck.md](runbooks/pipeline-stuck.md) | Recordings not reaching READY / outbox lag |
+| [runbooks/dlq-reprocess.md](runbooks/dlq-reprocess.md) | Poison messages on `*.dlq` and owner reprocess |
 
 ## Local drills
 

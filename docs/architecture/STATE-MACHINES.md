@@ -40,7 +40,8 @@ Illegal transitions must be rejected in domain code (not only in UI).
 | `UPLOADED` | `PROCESSING` | Media worker claims job |
 | `PROCESSING` | `READY` | Frames extracted successfully |
 | `UPLOADING`/`UPLOADED`/`PROCESSING` | `FAILED` | Irrecoverable error after retries |
-| `FAILED` | `PROCESSING` | Manual/admin reprocess (later) |
+| `FAILED` | `PROCESSING` | Media worker claims after reprocess / retry |
+| `FAILED` / `READY` / … | (outbox only) | Owner `POST .../reprocess` re-emits `RecordingUploaded` (ADR 0023) |
 
 `READY` on Recording means **media artifacts available**. Report has its own machine.
 
@@ -70,7 +71,7 @@ Illegal transitions must be rejected in domain code (not only in UI).
 | `PENDING` | `GENERATING` | AI worker starts |
 | `GENERATING` | `READY` | Analysis persisted + report assembled |
 | `GENERATING` | `FAILED` | Exhausted AI retries |
-| `FAILED` | `GENERATING` | Reprocess (later) |
+| `FAILED` | `GENERATING` | Reprocess via owner recording reprocess (re-emits upstream events) |
 
 ---
 

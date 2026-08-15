@@ -25,6 +25,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, protect ProtectFunc) {
 	mux.Handle("POST /v1/projects/{projectID}/recordings", protect(http.HandlerFunc(h.Create)))
 	mux.Handle("GET /v1/projects/{projectID}/recordings/{id}", protect(http.HandlerFunc(h.Get)))
 	mux.Handle("POST /v1/projects/{projectID}/recordings/{id}/complete", protect(http.HandlerFunc(h.Complete)))
+	mux.Handle("POST /v1/projects/{projectID}/recordings/{id}/reprocess", protect(http.HandlerFunc(h.Reprocess)))
 }
 
 type createRequest struct {
@@ -111,6 +112,30 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"recording": dto})
+}
+
+func (h *Handler) Reprocess(w http.ResponseWriter, r *http.Request) {
+	uid, ok := authhttp.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	projectID, err := uuid.Parse(r.PathValue("projectID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid recording id")
+		return
+	}
+	dto, err := h.svc.Reprocess(r.Context(), uid, projectID, id)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"recording": dto})
 }
 
 func writeDomainError(w http.ResponseWriter, err error) {

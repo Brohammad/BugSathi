@@ -11,6 +11,7 @@ import (
 
 type ProjectGuard interface {
 	EnsureMember(ctx context.Context, userID, projectID uuid.UUID) error
+	EnsureOwner(ctx context.Context, userID, projectID uuid.UUID) error
 }
 
 type Adapter struct {
@@ -23,6 +24,17 @@ func New(guard ProjectGuard) *Adapter {
 
 func (a *Adapter) EnsureMember(ctx context.Context, userID, projectID uuid.UUID) error {
 	err := a.guard.EnsureMember(ctx, userID, projectID)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, projectdomain.ErrForbidden) || errors.Is(err, projectdomain.ErrNotFound) {
+		return domain.ErrForbidden
+	}
+	return err
+}
+
+func (a *Adapter) EnsureOwner(ctx context.Context, userID, projectID uuid.UUID) error {
+	err := a.guard.EnsureOwner(ctx, userID, projectID)
 	if err == nil {
 		return nil
 	}

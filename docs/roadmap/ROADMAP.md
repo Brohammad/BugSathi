@@ -93,6 +93,11 @@
 - SLOs and runbooks (`docs/operations/`)
 - Chaos drill: `./scripts/chaos-drill.sh` (Postgres stop/start)
 
+### M15 — DLQ + Recording Reprocess
+- Max Kafka handler attempts → `{topic}.dlq` + commit source offset
+- Owner-gated `POST .../recordings/{id}/reprocess` re-emits `RecordingUploaded`
+- Metric `bugsathi_dlq_published_total`
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
@@ -104,5 +109,6 @@
 | 5 | M9–M10 |
 | 6 | M11–M12 |
 | 7 | M13–M14 |
+| 8 | M15+ |
 
 Depth over speed: a milestone can span multiple sessions.
