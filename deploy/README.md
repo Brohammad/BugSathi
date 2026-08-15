@@ -16,7 +16,10 @@ make up-prod          # build + start
 make up-prod-obs      # also Prometheus + Grafana
 make down-prod
 curl -s localhost:8080/readyz
+./scripts/chaos-drill.sh   # Postgres stop/start readiness drill
 ```
+
+Operations docs: [docs/operations](../docs/operations/README.md)
 
 ## Images
 

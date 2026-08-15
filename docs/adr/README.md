@@ -23,5 +23,6 @@
 | [0019](0019-observability-stack.md) | Prometheus metrics + OTLP traces | Accepted |
 | [0020](0020-production-deployment.md) | Production Compose + K8s sketches | Accepted |
 | [0021](0021-performance.md) | Pools, keyframes, report cache, pprof | Accepted |
+| [0022](0022-production-hardening.md) | Rate limits, headers, backoff, SLOs | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

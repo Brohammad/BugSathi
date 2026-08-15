@@ -88,9 +88,10 @@
 - In-process report detail TTL cache (`REPORT_CACHE_TTL`)
 - Optional `ENABLE_PPROF=true` → `/debug/pprof/`
 
-### M14 — Production Hardening
-- Rate limits, security headers, chaos/retry drills
-- SLOs and runbooks
+### M14 — Production Hardening ✅
+- Rate limits, security headers, body caps, Kafka exponential retry
+- SLOs and runbooks (`docs/operations/`)
+- Chaos drill: `./scripts/chaos-drill.sh` (Postgres stop/start)
 
 ## Suggested weekly cadence (flexible)
 

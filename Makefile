@@ -12,7 +12,7 @@ else
   GO ?= go
 endif
 
-.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race build build-images run-api run-worker health migrate fmt vet ci
+.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race build build-images run-api run-worker health migrate fmt vet ci chaos-drill
 
 help:
 	@echo "Targets:"
@@ -31,6 +31,7 @@ help:
 	@echo "  make run-api      Run API on :8080 (needs migrate)"
 	@echo "  make run-worker   Run worker health on :8081"
 	@echo "  make health       Curl local health endpoints"
+	@echo "  make chaos-drill  Postgres stop/start readiness drill (needs up-prod)"
 	@echo "  make ci           fmt + vet + test"
 	@echo ""
 	@echo "Using GO=$(GO)"
@@ -127,6 +128,9 @@ run-worker: build
 health:
 	@curl -sS -D - http://127.0.0.1:8080/healthz -o /tmp/bugsathi-api-health.json && echo && cat /tmp/bugsathi-api-health.json && echo
 	@curl -sS -D - http://127.0.0.1:8081/healthz -o /tmp/bugsathi-worker-health.json && echo && cat /tmp/bugsathi-worker-health.json && echo
+
+chaos-drill:
+	@./scripts/chaos-drill.sh
 
 fmt: ensure-go
 	"$(GO)" fmt ./...
