@@ -28,6 +28,7 @@ type Metrics struct {
 	PipelineDuration *prometheus.HistogramVec
 	AIDuration       *prometheus.HistogramVec
 	OutboxPending    prometheus.Gauge
+	RateLimitRejected *prometheus.CounterVec
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -59,8 +60,12 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "bugsathi_outbox_pending",
 			Help: "Unpublished outbox rows.",
 		}),
+		RateLimitRejected: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "bugsathi_rate_limit_rejected_total",
+			Help: "Requests rejected by rate limiter.",
+		}, []string{"route"}),
 	}
-	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending)
+	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending, m.RateLimitRejected)
 	return m
 }
 
@@ -85,6 +90,13 @@ func (m *Metrics) ObserveAI(provider string, err error, d time.Duration) {
 		result = "error"
 	}
 	m.AIDuration.WithLabelValues(provider, result).Observe(d.Seconds())
+}
+
+func (m *Metrics) IncRateLimited(route string) {
+	if m == nil || m.RateLimitRejected == nil {
+		return
+	}
+	m.RateLimitRejected.WithLabelValues(route).Inc()
 }
 
 func statusClass(code int) string {

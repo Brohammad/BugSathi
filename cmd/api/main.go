@@ -178,8 +178,16 @@ func main() {
 	collabHandler.RegisterRoutes(mux, protect)
 
 	server := &http.Server{
-		Addr:    cfg.HTTPAddr,
-		Handler: httpx.RequestIDs(observability.Middleware("api", metrics, mux)),
+		Addr: cfg.HTTPAddr,
+		Handler: httpx.RequestIDs(
+			httpx.SecurityHeaders(
+				httpx.RateLimit(cfg.Hardening.RateLimit, metrics,
+					httpx.MaxBodyBytes(cfg.Hardening.MaxBodyBytes,
+						observability.Middleware("api", metrics, mux),
+					),
+				),
+			),
+		),
 	}
 
 	errCh := make(chan error, 1)

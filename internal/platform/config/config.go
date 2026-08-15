@@ -21,6 +21,7 @@ type Config struct {
 	AI            AIConfig
 	Observability ObservabilityConfig
 	Cache         CacheConfig
+	Hardening     HardeningConfig
 }
 
 type ObservabilityConfig struct {
@@ -79,6 +80,29 @@ type CacheConfig struct {
 	ReportTTL time.Duration // 0 disables
 }
 
+type HardeningConfig struct {
+	MaxBodyBytes int64
+	RateLimit    RateLimitConfig
+	KafkaRetry   KafkaRetryConfig
+}
+
+type RateLimitConfig struct {
+	RPS       float64
+	Burst     int
+	AuthRPS   float64
+	AuthBurst int
+	Window    time.Duration
+}
+
+func (c RateLimitConfig) Enabled() bool {
+	return c.RPS > 0
+}
+
+type KafkaRetryConfig struct {
+	Base time.Duration
+	Max  time.Duration
+}
+
 // Load reads configuration from environment variables with safe local defaults.
 func Load() (Config, error) {
 	cfg := Config{
@@ -127,6 +151,20 @@ func Load() (Config, error) {
 		Cache: CacheConfig{
 			ReportTTL: getenvDuration("REPORT_CACHE_TTL", 30*time.Second),
 		},
+		Hardening: HardeningConfig{
+			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
+			RateLimit: RateLimitConfig{
+				RPS:       getenvFloat("RATE_LIMIT_RPS", 20),
+				Burst:     getenvInt("RATE_LIMIT_BURST", 40),
+				AuthRPS:   getenvFloat("AUTH_RATE_LIMIT_RPS", 5),
+				AuthBurst: getenvInt("AUTH_RATE_LIMIT_BURST", 10),
+				Window:    getenvDuration("RATE_LIMIT_WINDOW", time.Minute),
+			},
+			KafkaRetry: KafkaRetryConfig{
+				Base: getenvDuration("KAFKA_RETRY_BASE", time.Second),
+				Max:  getenvDuration("KAFKA_RETRY_MAX", 30*time.Second),
+			},
+		},
 	}
 
 	if cfg.HTTPAddr == "" {
@@ -155,6 +193,18 @@ func getenvInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func getenvFloat(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return fallback
+	}
+	return f
 }
 
 func getenvBool(key string, fallback bool) bool {

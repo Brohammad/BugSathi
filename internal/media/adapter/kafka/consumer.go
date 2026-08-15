@@ -11,6 +11,7 @@ import (
 	"github.com/Brohammad/BugSathi/internal/media/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
+	pkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	kafkago "github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel/attribute"
@@ -18,13 +19,15 @@ import (
 )
 
 type Consumer struct {
-	reader  *kafkago.Reader
-	svc     *service.Service
-	log     *slog.Logger
-	metrics *observability.Metrics
+	reader     *kafkago.Reader
+	svc        *service.Service
+	log        *slog.Logger
+	metrics    *observability.Metrics
+	retry      config.KafkaRetryConfig
+	failStreak int
 }
 
-func NewConsumer(cfg config.KafkaConfig, svc *service.Service, log *slog.Logger, metrics *observability.Metrics) *Consumer {
+func NewConsumer(cfg config.KafkaConfig, retry config.KafkaRetryConfig, svc *service.Service, log *slog.Logger, metrics *observability.Metrics) *Consumer {
 	return &Consumer{
 		reader: kafkago.NewReader(kafkago.ReaderConfig{
 			Brokers:        cfg.Brokers,
@@ -39,6 +42,7 @@ func NewConsumer(cfg config.KafkaConfig, svc *service.Service, log *slog.Logger,
 		svc:     svc,
 		log:     log,
 		metrics: metrics,
+		retry:   retry,
 	}
 }
 
@@ -87,7 +91,8 @@ func (c *Consumer) Run(ctx context.Context) error {
 				c.metrics.ObservePipeline("media", err, time.Since(start))
 			}
 			log.Error("media handling failed", "error", err, "recording_id", evt.RecordingID)
-			time.Sleep(time.Second)
+			c.failStreak++
+			time.Sleep(pkafka.Backoff(c.failStreak, c.retry.Base, c.retry.Max))
 			continue
 		}
 		span.End()
@@ -98,6 +103,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 		if err := c.reader.CommitMessages(ctx, msg); err != nil {
 			return err
 		}
+		c.failStreak = 0
 	}
 }
 

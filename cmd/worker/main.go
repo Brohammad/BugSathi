@@ -99,7 +99,7 @@ func main() {
 	go relay.Run(ctx)
 	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
 
-	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, mediaService, log, metrics)
+	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics)
 	defer mediaConsumer.Close()
 	go func() {
 		if err := mediaConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -108,7 +108,7 @@ func main() {
 		}
 	}()
 
-	aiConsumer := aikafka.NewConsumer(cfg.Kafka, aiService, log, metrics)
+	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics)
 	defer aiConsumer.Close()
 	go func() {
 		if err := aiConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
