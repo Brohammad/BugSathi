@@ -2,16 +2,19 @@ package service_test
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/Brohammad/BugSathi/internal/projects/adapter/memory"
 	"github.com/Brohammad/BugSathi/internal/projects/domain"
 	"github.com/Brohammad/BugSathi/internal/projects/service"
+	uploadmem "github.com/Brohammad/BugSathi/internal/uploads/adapter/memory"
 	"github.com/google/uuid"
 )
 
 func TestProjectLifecycle(t *testing.T) {
-	svc := service.New(memory.NewRepo())
+	svc := service.New(memory.NewRepo(), uploadmem.NewStorage(), slog.Default())
 	ctx := context.Background()
 	owner := uuid.New()
 	member := uuid.New()
@@ -65,5 +68,61 @@ func TestProjectLifecycle(t *testing.T) {
 	}
 	if err := svc.Delete(ctx, owner, p.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDeleteRemovesProjectObjects(t *testing.T) {
+	repo := memory.NewRepo()
+	objs := uploadmem.NewStorage()
+	svc := service.New(repo, objs, slog.Default())
+	ctx := context.Background()
+	owner := uuid.New()
+
+	p, err := svc.Create(ctx, owner, "Cleanup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := uuid.New()
+	keepKey := "projects/" + other.String() + "/recordings/" + uuid.New().String() + "/source.webm"
+	prefix := "projects/" + p.ID.String() + "/"
+	source := prefix + "recordings/" + uuid.New().String() + "/source.webm"
+	frame := prefix + "recordings/" + uuid.New().String() + "/frames/00000.jpg"
+	thumb := prefix + "recordings/" + uuid.New().String() + "/thumb.jpg"
+	objs.Put(source, "video/webm", []byte("src"))
+	objs.Put(frame, "image/jpeg", []byte("frm"))
+	objs.Put(thumb, "image/jpeg", []byte("thm"))
+	objs.Put(keepKey, "video/webm", []byte("keep"))
+
+	if err := svc.Delete(ctx, owner, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	if objs.Has(source) || objs.Has(frame) || objs.Has(thumb) {
+		t.Fatalf("expected project objects deleted, still have: %v", objs.Keys())
+	}
+	if !objs.Has(keepKey) {
+		t.Fatal("objects under another project must not be deleted")
+	}
+}
+
+type failPrefix struct{}
+
+func (failPrefix) DeletePrefix(context.Context, string) error {
+	return errors.New("minio unavailable")
+}
+
+func TestDeleteSucceedsWhenObjectCleanupFails(t *testing.T) {
+	repo := memory.NewRepo()
+	svc := service.New(repo, failPrefix{}, slog.Default())
+	ctx := context.Background()
+	owner := uuid.New()
+	p, err := svc.Create(ctx, owner, "Survive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Delete(ctx, owner, p.ID); err != nil {
+		t.Fatalf("DB delete must succeed even if MinIO cleanup fails: %v", err)
+	}
+	if _, err := repo.GetByID(ctx, p.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("project should be gone from DB, got %v", err)
 	}
 }

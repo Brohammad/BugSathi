@@ -19,6 +19,12 @@ type Repository interface {
 	CountOwners(ctx context.Context, projectID uuid.UUID) (int, error)
 }
 
+// ObjectStore deletes media for a project after the DB row is gone.
+// Keys follow ADR 0003: projects/{project_id}/...
+type ObjectStore interface {
+	DeletePrefix(ctx context.Context, prefix string) error
+}
+
 type ProjectWithRole struct {
 	Project domain.Project
 	Role    domain.Role

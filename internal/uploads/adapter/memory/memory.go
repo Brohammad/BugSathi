@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -173,6 +175,46 @@ func (s *Storage) Put(key, contentType string, body []byte) {
 	defer s.mu.Unlock()
 	s.objs[key] = append([]byte(nil), body...)
 	s.ct[key] = contentType
+}
+
+func (s *Storage) Has(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.objs[key]
+	return ok
+}
+
+func (s *Storage) Keys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.objs))
+	for k := range s.objs {
+		out = append(out, k)
+	}
+	return out
+}
+
+func (s *Storage) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.objs, key)
+	delete(s.ct, key)
+	return nil
+}
+
+func (s *Storage) DeletePrefix(_ context.Context, prefix string) error {
+	if prefix == "" {
+		return fmt.Errorf("refusing to delete with empty prefix")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k := range s.objs {
+		if strings.HasPrefix(k, prefix) {
+			delete(s.objs, k)
+			delete(s.ct, k)
+		}
+	}
+	return nil
 }
 
 type AccessOK struct{}

@@ -97,9 +97,6 @@ func main() {
 	)
 	authHandler := authhttp.NewHandler(authService)
 
-	projectService := projectsvc.New(projectpg.NewRepo(pool))
-	projectHandler := projecthttp.NewHandler(projectService)
-
 	objectStore, err := uploadminio.New(cfg.MinIO)
 	if err != nil {
 		log.Error("minio client failed", "error", err)
@@ -108,6 +105,9 @@ func main() {
 	if err := objectStore.EnsureBucket(ctx); err != nil {
 		log.Warn("minio ensure bucket", "error", err)
 	}
+
+	projectService := projectsvc.New(projectpg.NewRepo(pool), objectStore, log)
+	projectHandler := projecthttp.NewHandler(projectService)
 
 	uploadService := uploadsvc.New(
 		uploadpg.NewRecordingRepo(pool),

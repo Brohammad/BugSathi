@@ -20,7 +20,8 @@ Uploads and reports are scoped to a tenancy unit. Auth gives us *who*; Projects 
   - `GET /v1/projects` — list mine
   - `GET /v1/projects/{id}` — get if member
   - `PATCH /v1/projects/{id}` — owner only
-  - `DELETE /v1/projects/{id}` — owner only
+  - `DELETE /v1/projects/{id}` — owner only; cascades DB and best-effort deletes
+  MinIO objects under `projects/{id}/` (ADR 0026)
   - `POST /v1/projects/{id}/members` — owner adds member by user id (email lookup later)
   - `GET /v1/projects/{id}/members` — list members if member
 - Authorization via `ProjectRepository.GetMembership(userID, projectID)`.

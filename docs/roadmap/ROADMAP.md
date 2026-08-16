@@ -122,6 +122,12 @@
 - Expired lease from a dead worker is reclaimed automatically
 - Metric `bugsathi_claim_skipped_total`; ADR 0025
 
+### M20 — Object cleanup on project delete
+- `DeletePrefix` on MinIO (+ memory) removes `projects/{id}/…` after DB cascade
+- HTTP delete stays 204 if MinIO cleanup fails (logged); missing keys are OK
+- Abandoned `UPLOADING` GC deferred; no per-recording delete API yet
+- ADR 0026
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
