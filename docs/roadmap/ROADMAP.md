@@ -104,6 +104,12 @@
 - API CORS via `CORS_ORIGINS` (Vite defaults)
 - ADR 0024
 
+### M17 — Kafka consumer at-least-once retries
+- Retry the **same** message on handler failure (no fetch-next-on-error skip)
+- DLQ + commit only after `KAFKA_RETRY_MAX_ATTEMPTS`
+- Transient `FetchMessage` errors backoff-retry instead of killing the worker
+- Shared `HandleWithRetries` / `FetchWithRetry` in `internal/platform/kafka`
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |

@@ -10,8 +10,8 @@ import (
 	"github.com/Brohammad/BugSathi/internal/media/domain"
 	"github.com/Brohammad/BugSathi/internal/media/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
-	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	pkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
+	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	kafkago "github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,13 +19,14 @@ import (
 )
 
 type Consumer struct {
-	reader   *kafkago.Reader
+	reader   pkafka.MessageReader
 	svc      *service.Service
 	log      *slog.Logger
 	metrics  *observability.Metrics
 	retry    config.KafkaRetryConfig
 	pub      *pkafka.Publisher
 	attempts *pkafka.AttemptTracker
+	closer   func() error
 }
 
 func NewConsumer(
@@ -36,43 +37,36 @@ func NewConsumer(
 	metrics *observability.Metrics,
 	pub *pkafka.Publisher,
 ) *Consumer {
+	r := kafkago.NewReader(kafkago.ReaderConfig{
+		Brokers:        cfg.Brokers,
+		GroupID:        "bugsathi-media",
+		Topic:          domain.TopicRecordingUploaded,
+		MinBytes:       1,
+		MaxBytes:       10e6,
+		MaxWait:        time.Second,
+		CommitInterval: 0,
+		StartOffset:    kafkago.FirstOffset,
+	})
 	return &Consumer{
-		reader: kafkago.NewReader(kafkago.ReaderConfig{
-			Brokers:        cfg.Brokers,
-			GroupID:        "bugsathi-media",
-			Topic:          domain.TopicRecordingUploaded,
-			MinBytes:       1,
-			MaxBytes:       10e6,
-			MaxWait:        time.Second,
-			CommitInterval: 0,
-			StartOffset:    kafkago.FirstOffset,
-		}),
+		reader:   r,
 		svc:      svc,
 		log:      log,
 		metrics:  metrics,
 		retry:    retry,
 		pub:      pub,
 		attempts: pkafka.NewAttemptTracker(),
+		closer:   r.Close,
 	}
-}
-
-func (c *Consumer) maxAttempts() int {
-	if c.retry.MaxAttempts <= 0 {
-		return 5
-	}
-	return c.retry.MaxAttempts
 }
 
 func (c *Consumer) Run(ctx context.Context) error {
 	c.log.Info("media consumer started", "topic", domain.TopicRecordingUploaded, "group", "bugsathi-media")
 	tr := observability.Tracer("bugsathi/media")
 	for {
-		msg, err := c.reader.FetchMessage(ctx)
+		msg, err := pkafka.FetchWithRetry(ctx, c.reader, c.retry, c.log)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return fmt.Errorf("fetch: %w", err)
+			// ctx canceled / shutdown
+			return nil
 		}
 
 		var evt domain.RecordingUploadedEvent
@@ -93,40 +87,39 @@ func (c *Consumer) Run(ctx context.Context) error {
 			"offset", msg.Offset,
 		)
 
-		start := time.Now()
-		spanCtx, span := tr.Start(msgCtx, "media.HandleUploaded")
-		span.SetAttributes(
-			attribute.String("recording_id", evt.RecordingID),
-			attribute.String("correlation_id", evt.CorrelationID),
-		)
-		err = c.svc.HandleUploaded(spanCtx, evt)
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-			span.End()
-			if c.metrics != nil {
-				c.metrics.ObservePipeline("media", err, time.Since(start))
-			}
-			n := c.attempts.Inc(msg.Topic, msg.Partition, msg.Offset)
-			log.Error("media handling failed", "error", err, "recording_id", evt.RecordingID, "attempt", n)
-			if n >= c.maxAttempts() {
-				if err := c.deadLetter(ctx, msg, n, err); err != nil {
-					return err
+		err = pkafka.HandleWithRetries(ctx, c.reader, msg, c.retry, c.attempts,
+			func(attemptCtx context.Context) error {
+				start := time.Now()
+				spanCtx, span := tr.Start(attemptCtx, "media.HandleUploaded")
+				span.SetAttributes(
+					attribute.String("recording_id", evt.RecordingID),
+					attribute.String("correlation_id", evt.CorrelationID),
+				)
+				hErr := c.svc.HandleUploaded(spanCtx, evt)
+				if hErr != nil {
+					span.RecordError(hErr)
+					span.SetStatus(codes.Error, hErr.Error())
+					span.End()
+					if c.metrics != nil {
+						c.metrics.ObservePipeline("media", hErr, time.Since(start))
+					}
+					return hErr
 				}
-				continue
+				span.End()
+				if c.metrics != nil {
+					c.metrics.ObservePipeline("media", nil, time.Since(start))
+				}
+				return nil
+			},
+			c.deadLetter,
+			log,
+		)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
 			}
-			time.Sleep(pkafka.Backoff(n, c.retry.Base, c.retry.Max))
-			continue
-		}
-		span.End()
-		if c.metrics != nil {
-			c.metrics.ObservePipeline("media", nil, time.Since(start))
-		}
-
-		if err := c.reader.CommitMessages(ctx, msg); err != nil {
 			return err
 		}
-		c.attempts.Clear(msg.Topic, msg.Partition, msg.Offset)
 	}
 }
 
@@ -149,5 +142,8 @@ func (c *Consumer) deadLetter(ctx context.Context, msg kafkago.Message, attempts
 }
 
 func (c *Consumer) Close() error {
-	return c.reader.Close()
+	if c.closer != nil {
+		return c.closer()
+	}
+	return nil
 }

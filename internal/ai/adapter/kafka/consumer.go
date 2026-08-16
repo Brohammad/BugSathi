@@ -19,13 +19,14 @@ import (
 )
 
 type Consumer struct {
-	reader   *kafkago.Reader
+	reader   pkafka.MessageReader
 	svc      *service.Service
 	log      *slog.Logger
 	metrics  *observability.Metrics
 	retry    config.KafkaRetryConfig
 	pub      *pkafka.Publisher
 	attempts *pkafka.AttemptTracker
+	closer   func() error
 }
 
 func NewConsumer(
@@ -36,44 +37,37 @@ func NewConsumer(
 	metrics *observability.Metrics,
 	pub *pkafka.Publisher,
 ) *Consumer {
+	r := kafkago.NewReader(kafkago.ReaderConfig{
+		Brokers:        cfg.Brokers,
+		GroupID:        "bugsathi-ai",
+		Topic:          domain.TopicFramesExtracted,
+		MinBytes:       1,
+		MaxBytes:       10e6,
+		MaxWait:        time.Second,
+		CommitInterval: 0,
+		StartOffset:    kafkago.FirstOffset,
+	})
 	return &Consumer{
-		reader: kafkago.NewReader(kafkago.ReaderConfig{
-			Brokers:        cfg.Brokers,
-			GroupID:        "bugsathi-ai",
-			Topic:          domain.TopicFramesExtracted,
-			MinBytes:       1,
-			MaxBytes:       10e6,
-			MaxWait:        time.Second,
-			CommitInterval: 0,
-			StartOffset:    kafkago.FirstOffset,
-		}),
+		reader:   r,
 		svc:      svc,
 		log:      log,
 		metrics:  metrics,
 		retry:    retry,
 		pub:      pub,
 		attempts: pkafka.NewAttemptTracker(),
+		closer:   r.Close,
 	}
-}
-
-func (c *Consumer) maxAttempts() int {
-	if c.retry.MaxAttempts <= 0 {
-		return 5
-	}
-	return c.retry.MaxAttempts
 }
 
 func (c *Consumer) Run(ctx context.Context) error {
 	c.log.Info("ai consumer started", "topic", domain.TopicFramesExtracted, "group", "bugsathi-ai")
 	tr := observability.Tracer("bugsathi/ai")
 	for {
-		msg, err := c.reader.FetchMessage(ctx)
+		msg, err := pkafka.FetchWithRetry(ctx, c.reader, c.retry, c.log)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return fmt.Errorf("fetch: %w", err)
+			return nil
 		}
+
 		var evt domain.FramesExtractedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
 			c.log.Error("invalid FramesExtracted payload", "error", err)
@@ -82,6 +76,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 			}
 			continue
 		}
+
 		msgCtx := logging.ContextWithCorrelationID(ctx, evt.CorrelationID)
 		msgCtx = logging.ContextWithRecordingID(msgCtx, evt.RecordingID)
 		log := logging.WithContext(msgCtx, c.log)
@@ -90,39 +85,39 @@ func (c *Consumer) Run(ctx context.Context) error {
 			"frames", len(evt.FrameKeys),
 		)
 
-		start := time.Now()
-		spanCtx, span := tr.Start(msgCtx, "ai.HandleFramesExtracted")
-		span.SetAttributes(
-			attribute.String("recording_id", evt.RecordingID),
-			attribute.String("correlation_id", evt.CorrelationID),
-		)
-		err = c.svc.HandleFramesExtracted(spanCtx, evt)
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-			span.End()
-			if c.metrics != nil {
-				c.metrics.ObservePipeline("ai", err, time.Since(start))
-			}
-			n := c.attempts.Inc(msg.Topic, msg.Partition, msg.Offset)
-			log.Error("ai handling failed", "error", err, "recording_id", evt.RecordingID, "attempt", n)
-			if n >= c.maxAttempts() {
-				if err := c.deadLetter(ctx, msg, n, err); err != nil {
-					return err
+		err = pkafka.HandleWithRetries(ctx, c.reader, msg, c.retry, c.attempts,
+			func(attemptCtx context.Context) error {
+				start := time.Now()
+				spanCtx, span := tr.Start(attemptCtx, "ai.HandleFramesExtracted")
+				span.SetAttributes(
+					attribute.String("recording_id", evt.RecordingID),
+					attribute.String("correlation_id", evt.CorrelationID),
+				)
+				hErr := c.svc.HandleFramesExtracted(spanCtx, evt)
+				if hErr != nil {
+					span.RecordError(hErr)
+					span.SetStatus(codes.Error, hErr.Error())
+					span.End()
+					if c.metrics != nil {
+						c.metrics.ObservePipeline("ai", hErr, time.Since(start))
+					}
+					return hErr
 				}
-				continue
+				span.End()
+				if c.metrics != nil {
+					c.metrics.ObservePipeline("ai", nil, time.Since(start))
+				}
+				return nil
+			},
+			c.deadLetter,
+			log,
+		)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
 			}
-			time.Sleep(pkafka.Backoff(n, c.retry.Base, c.retry.Max))
-			continue
-		}
-		span.End()
-		if c.metrics != nil {
-			c.metrics.ObservePipeline("ai", nil, time.Since(start))
-		}
-		if err := c.reader.CommitMessages(ctx, msg); err != nil {
 			return err
 		}
-		c.attempts.Clear(msg.Topic, msg.Partition, msg.Offset)
 	}
 }
 
@@ -144,4 +139,9 @@ func (c *Consumer) deadLetter(ctx context.Context, msg kafkago.Message, attempts
 	return c.reader.CommitMessages(ctx, msg)
 }
 
-func (c *Consumer) Close() error { return c.reader.Close() }
+func (c *Consumer) Close() error {
+	if c.closer != nil {
+		return c.closer()
+	}
+	return nil
+}
