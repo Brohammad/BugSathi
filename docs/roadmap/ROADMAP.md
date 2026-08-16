@@ -115,6 +115,13 @@
 - Publish happens while rows are locked; mark `published_at` in the same transaction
 - Concurrent flush tests prove single publish; failed publish leaves row claimable
 
+### M19 — Media processing claim
+- `recordings.processing_owner` + `processing_expires_at` lease (migration `0008`)
+- One ffmpeg run per recording: overlapping deliveries are skipped and committed
+- Heartbeat renews the lease; owner-gated `FinalizeReady` / `MarkFailed` release it
+- Expired lease from a dead worker is reclaimed automatically
+- Metric `bugsathi_claim_skipped_total`; ADR 0025
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |

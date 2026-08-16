@@ -38,12 +38,18 @@ Illegal transitions must be rejected in domain code (not only in UI).
 | (new) | `UPLOADING` | Create upload session |
 | `UPLOADING` | `UPLOADED` | Complete upload + object exists |
 | `UPLOADED` | `PROCESSING` | Media worker claims job |
-| `PROCESSING` | `READY` | Frames extracted successfully |
+| `PROCESSING` | `READY` | Frames extracted successfully (claim holder only) |
 | `UPLOADING`/`UPLOADED`/`PROCESSING` | `FAILED` | Irrecoverable error after retries |
 | `FAILED` | `PROCESSING` | Media worker claims after reprocess / retry |
+| `PROCESSING` | `PROCESSING` | Another worker reclaims an expired lease |
 | `FAILED` / `READY` / … | (outbox only) | Owner `POST .../reprocess` re-emits `RecordingUploaded` (ADR 0023) |
 
 `READY` on Recording means **media artifacts available**. Report has its own machine.
+
+`PROCESSING` carries a claim (`processing_owner`, `processing_expires_at`). Only
+the current owner may move the recording to `READY` or `FAILED`; a delivery that
+finds a live claim owned by someone else does nothing. An expired claim means
+the holder died and the recording is free to be picked up again (ADR 0025).
 
 ---
 

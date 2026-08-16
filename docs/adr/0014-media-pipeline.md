@@ -15,6 +15,7 @@ After `RecordingUploaded`, we must extract frames without blocking the API. Orde
 3. Sample frames with bounded rate (default `fps=0.5`, max 20 frames).
 4. Persist `media_artifacts`, set recording `UPLOADED→PROCESSING→READY`, outbox `FramesExtracted` in one TX.
 5. Idempotent: if recording already `READY` with artifacts → skip ffmpeg; ensure outbox event exists/published.
+   Overlapping deliveries are excluded by an expiring processing claim (ADR 0025).
 6. Failures → mark `FAILED`; after `KAFKA_RETRY_MAX_ATTEMPTS` publish to `{topic}.dlq` and commit (ADR 0023). Owner reprocess re-emits `RecordingUploaded`.
 
 ## Consequences

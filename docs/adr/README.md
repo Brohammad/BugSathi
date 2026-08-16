@@ -26,5 +26,6 @@
 | [0022](0022-production-hardening.md) | Rate limits, headers, backoff, SLOs | Accepted |
 | [0023](0023-dlq-reprocess.md) | Kafka DLQ + owner reprocess API | Accepted |
 | [0024](0024-web-ui.md) | React + Vite web UI | Accepted |
+| [0025](0025-media-processing-claim.md) | Media processing claim (expiring lease) | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

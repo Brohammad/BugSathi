@@ -19,9 +19,18 @@ type Config struct {
 	Kafka         KafkaConfig
 	Auth          AuthConfig
 	AI            AIConfig
+	Media         MediaConfig
 	Observability ObservabilityConfig
 	Cache         CacheConfig
 	Hardening     HardeningConfig
+}
+
+// MediaConfig controls the processing claim that keeps two workers from
+// extracting frames for the same recording at the same time.
+type MediaConfig struct {
+	WorkerID   string        // claim owner; defaults to hostname-pid
+	ClaimLease time.Duration // lease validity without renewal
+	ClaimRenew time.Duration // renewal interval; must be shorter than the lease
 }
 
 type ObservabilityConfig struct {
@@ -145,6 +154,11 @@ func Load() (Config, error) {
 			Model:     getenv("AI_MODEL", "gpt-4o-mini"),
 			Timeout:   getenvDuration("AI_TIMEOUT", 60*time.Second),
 			MaxFrames: getenvInt("AI_MAX_FRAMES", 5),
+		},
+		Media: MediaConfig{
+			WorkerID:   getenv("WORKER_ID", ""),
+			ClaimLease: getenvDuration("MEDIA_CLAIM_LEASE", 2*time.Minute),
+			ClaimRenew: getenvDuration("MEDIA_CLAIM_RENEW", 30*time.Second),
 		},
 		Observability: ObservabilityConfig{
 			OTLPEndpoint: getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),

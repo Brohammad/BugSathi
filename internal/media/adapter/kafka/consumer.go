@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -96,6 +97,21 @@ func (c *Consumer) Run(ctx context.Context) error {
 					attribute.String("correlation_id", evt.CorrelationID),
 				)
 				hErr := c.svc.HandleUploaded(spanCtx, evt)
+				if domain.IsClaimConflict(hErr) {
+					// Another worker owns this recording: the delivery is done
+					// from our side, so commit instead of retrying into the DLQ.
+					reason := claimSkipReason(hErr)
+					span.SetAttributes(attribute.String("claim_skip_reason", reason))
+					span.End()
+					if c.metrics != nil {
+						c.metrics.IncClaimSkipped("media", reason)
+					}
+					log.Info("skipping delivery; recording claimed by another worker",
+						"recording_id", evt.RecordingID,
+						"reason", reason,
+					)
+					return nil
+				}
 				if hErr != nil {
 					span.RecordError(hErr)
 					span.SetStatus(codes.Error, hErr.Error())
@@ -121,6 +137,13 @@ func (c *Consumer) Run(ctx context.Context) error {
 			return err
 		}
 	}
+}
+
+func claimSkipReason(err error) string {
+	if errors.Is(err, domain.ErrClaimLost) {
+		return "lost"
+	}
+	return "held"
 }
 
 func (c *Consumer) deadLetter(ctx context.Context, msg kafkago.Message, attempts int, cause error) error {

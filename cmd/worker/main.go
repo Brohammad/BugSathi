@@ -76,7 +76,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	mediaService := mediasvc.New(mediapg.NewStore(pool), objectStore, mediaffmpeg.New())
+	mediaService := mediasvc.New(mediapg.NewStore(pool), objectStore, mediaffmpeg.New(), mediasvc.ClaimConfig{
+		Owner:         cfg.Media.WorkerID,
+		Lease:         cfg.Media.ClaimLease,
+		RenewInterval: cfg.Media.ClaimRenew,
+	})
+	log.Info("media claim owner", "worker_id", mediaService.Owner(), "lease", cfg.Media.ClaimLease)
 	analyzer := observability.Analyzer{
 		Inner:   newAnalyzer(cfg),
 		Metrics: metrics,

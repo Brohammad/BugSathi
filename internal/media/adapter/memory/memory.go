@@ -17,8 +17,15 @@ import (
 type Store struct {
 	mu        sync.Mutex
 	recs      map[uuid.UUID]uploaddomain.Recording
+	claims    map[uuid.UUID]Claim
 	artifacts map[uuid.UUID][]domain.Artifact
 	outbox    []OutboxRow
+}
+
+// Claim mirrors the recordings.processing_owner / processing_expires_at pair.
+type Claim struct {
+	Owner     string
+	ExpiresAt time.Time
 }
 
 type OutboxRow struct {
@@ -29,6 +36,7 @@ type OutboxRow struct {
 func NewStore() *Store {
 	return &Store{
 		recs:      map[uuid.UUID]uploaddomain.Recording{},
+		claims:    map[uuid.UUID]Claim{},
 		artifacts: map[uuid.UUID][]domain.Artifact{},
 	}
 }
@@ -37,6 +45,20 @@ func (s *Store) Seed(rec uploaddomain.Recording) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.recs[rec.ID] = rec
+}
+
+// SeedClaim installs a lease so tests can simulate another worker.
+func (s *Store) SeedClaim(id uuid.UUID, owner string, expiresAt time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claims[id] = Claim{Owner: owner, ExpiresAt: expiresAt}
+}
+
+func (s *Store) Claim(id uuid.UUID) (Claim, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.claims[id]
+	return c, ok
 }
 
 func (s *Store) Outbox() []OutboxRow {
@@ -61,45 +83,81 @@ func (s *Store) Get(_ context.Context, id uuid.UUID) (uploaddomain.Recording, er
 	return r, nil
 }
 
-func (s *Store) MarkProcessing(_ context.Context, id uuid.UUID, at time.Time) error {
+func (s *Store) ClaimProcessing(_ context.Context, id uuid.UUID, owner string, at, expiresAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, ok := s.recs[id]
 	if !ok {
 		return domain.ErrNotFound
+	}
+	switch r.Status {
+	case uploaddomain.StatusUploaded, uploaddomain.StatusFailed:
+	case uploaddomain.StatusProcessing:
+		if c, held := s.claims[id]; held && c.Owner != owner && c.ExpiresAt.After(at) {
+			return domain.ErrClaimHeld
+		}
+	default:
+		return domain.ErrConflict
 	}
 	r.Status = uploaddomain.StatusProcessing
 	r.UpdatedAt = at
 	s.recs[id] = r
+	s.claims[id] = Claim{Owner: owner, ExpiresAt: expiresAt}
 	return nil
 }
 
-func (s *Store) MarkFailed(_ context.Context, id uuid.UUID, at time.Time) error {
+func (s *Store) RenewClaim(_ context.Context, id uuid.UUID, owner string, expiresAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.claims[id]
+	if !ok || c.Owner != owner {
+		return domain.ErrClaimLost
+	}
+	s.claims[id] = Claim{Owner: owner, ExpiresAt: expiresAt}
+	return nil
+}
+
+func (s *Store) MarkFailed(_ context.Context, id uuid.UUID, owner string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, ok := s.recs[id]
 	if !ok {
 		return domain.ErrNotFound
+	}
+	if c, held := s.claims[id]; !held || c.Owner != owner {
+		return domain.ErrClaimLost
 	}
 	r.Status = uploaddomain.StatusFailed
 	r.UpdatedAt = at
 	s.recs[id] = r
+	delete(s.claims, id)
 	return nil
 }
 
-func (s *Store) FinalizeReady(_ context.Context, id uuid.UUID, at time.Time, artifacts []domain.Artifact, topic, key string, payload []byte, corr string) error {
+func (s *Store) FinalizeReady(_ context.Context, id uuid.UUID, owner string, at time.Time, artifacts []domain.Artifact, topic, key string, payload []byte, corr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, ok := s.recs[id]
 	if !ok {
 		return domain.ErrNotFound
 	}
+	if c, held := s.claims[id]; !held || c.Owner != owner {
+		return domain.ErrClaimLost
+	}
 	r.Status = uploaddomain.StatusReady
 	r.UpdatedAt = at
 	s.recs[id] = r
+	delete(s.claims, id)
 	if len(artifacts) > 0 {
 		s.artifacts[id] = append([]domain.Artifact(nil), artifacts...)
 	}
+	s.outbox = append(s.outbox, OutboxRow{Topic: topic, Key: key, Payload: payload, Corr: corr})
+	return nil
+}
+
+func (s *Store) InsertOutbox(_ context.Context, topic, key string, payload []byte, corr string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.outbox = append(s.outbox, OutboxRow{Topic: topic, Key: key, Payload: payload, Corr: corr})
 	return nil
 }

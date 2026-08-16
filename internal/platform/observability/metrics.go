@@ -22,14 +22,15 @@ import (
 
 // Metrics holds Prometheus instruments for API and worker.
 type Metrics struct {
-	HTTPRequests     *prometheus.CounterVec
-	HTTPDuration     *prometheus.HistogramVec
-	PipelineJobs     *prometheus.CounterVec
-	PipelineDuration *prometheus.HistogramVec
-	AIDuration       *prometheus.HistogramVec
+	HTTPRequests      *prometheus.CounterVec
+	HTTPDuration      *prometheus.HistogramVec
+	PipelineJobs      *prometheus.CounterVec
+	PipelineDuration  *prometheus.HistogramVec
+	AIDuration        *prometheus.HistogramVec
 	OutboxPending     prometheus.Gauge
 	RateLimitRejected *prometheus.CounterVec
 	DLQPublished      *prometheus.CounterVec
+	ClaimSkipped      *prometheus.CounterVec
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -69,8 +70,12 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "bugsathi_dlq_published_total",
 			Help: "Messages published to dead-letter topics.",
 		}, []string{"source_topic"}),
+		ClaimSkipped: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "bugsathi_claim_skipped_total",
+			Help: "Deliveries skipped because another worker owned the processing claim.",
+		}, []string{"stage", "reason"}),
 	}
-	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending, m.RateLimitRejected, m.DLQPublished)
+	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending, m.RateLimitRejected, m.DLQPublished, m.ClaimSkipped)
 	return m
 }
 
@@ -102,6 +107,13 @@ func (m *Metrics) IncRateLimited(route string) {
 		return
 	}
 	m.RateLimitRejected.WithLabelValues(route).Inc()
+}
+
+func (m *Metrics) IncClaimSkipped(stage, reason string) {
+	if m == nil || m.ClaimSkipped == nil {
+		return
+	}
+	m.ClaimSkipped.WithLabelValues(stage, reason).Inc()
 }
 
 func (m *Metrics) IncDLQ(sourceTopic string) {
