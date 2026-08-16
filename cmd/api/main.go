@@ -18,6 +18,7 @@ import (
 	collabhttp "github.com/Brohammad/BugSathi/internal/collab/adapter/httpapi"
 	collabhub "github.com/Brohammad/BugSathi/internal/collab/adapter/hub"
 	collabpg "github.com/Brohammad/BugSathi/internal/collab/adapter/postgres"
+	collabdomain "github.com/Brohammad/BugSathi/internal/collab/domain"
 	collabsvc "github.com/Brohammad/BugSathi/internal/collab/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
@@ -36,6 +37,7 @@ import (
 	reportsvc "github.com/Brohammad/BugSathi/internal/reports/service"
 	sharehttp "github.com/Brohammad/BugSathi/internal/sharing/adapter/httpapi"
 	sharepg "github.com/Brohammad/BugSathi/internal/sharing/adapter/postgres"
+	sharingdomain "github.com/Brohammad/BugSathi/internal/sharing/domain"
 	sharesvc "github.com/Brohammad/BugSathi/internal/sharing/service"
 	uploadaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/access"
 	uploadhttp "github.com/Brohammad/BugSathi/internal/uploads/adapter/httpapi"
@@ -142,8 +144,14 @@ func main() {
 
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
-	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicRecordingUploaded, 3); err != nil {
-		log.Warn("ensure kafka topic", "error", err)
+	for _, topic := range []string{
+		domain.TopicRecordingUploaded,
+		sharingdomain.TopicShareCreated,
+		collabdomain.TopicCommentCreated,
+	} {
+		if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, topic, 3); err != nil {
+			log.Warn("ensure kafka topic", "topic", topic, "error", err)
+		}
 	}
 	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
 	go relay.Run(ctx)

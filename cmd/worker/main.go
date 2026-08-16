@@ -18,6 +18,7 @@ import (
 	aidomain "github.com/Brohammad/BugSathi/internal/ai/domain"
 	"github.com/Brohammad/BugSathi/internal/ai/port"
 	aisvc "github.com/Brohammad/BugSathi/internal/ai/service"
+	collabdomain "github.com/Brohammad/BugSathi/internal/collab/domain"
 	mediaffmpeg "github.com/Brohammad/BugSathi/internal/media/adapter/ffmpeg"
 	mediakafka "github.com/Brohammad/BugSathi/internal/media/adapter/kafka"
 	mediapg "github.com/Brohammad/BugSathi/internal/media/adapter/postgres"
@@ -31,6 +32,7 @@ import (
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
+	sharingdomain "github.com/Brohammad/BugSathi/internal/sharing/domain"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
@@ -87,6 +89,8 @@ func main() {
 		mediadomain.TopicFramesExtracted,
 		aidomain.TopicAnalysisCompleted,
 		aidomain.TopicReportGenerated,
+		sharingdomain.TopicShareCreated,
+		collabdomain.TopicCommentCreated,
 		platformkafka.DLQTopic(mediadomain.TopicRecordingUploaded),
 		platformkafka.DLQTopic(mediadomain.TopicFramesExtracted),
 	} {
