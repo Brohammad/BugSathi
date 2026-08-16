@@ -9,17 +9,35 @@ import (
 	"github.com/Brohammad/BugSathi/internal/platform/httpx"
 )
 
-func TestSecurityHeaders(t *testing.T) {
-	h := httpx.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestCORSPreflight(t *testing.T) {
+	h := httpx.CORS([]string{"http://localhost:5173"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
+	req := httptest.NewRequest(http.MethodOptions, "/v1/projects", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/", nil))
-	if rr.Header().Get("X-Content-Type-Options") != "nosniff" {
-		t.Fatalf("missing nosniff")
+	h.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("preflight=%d", rr.Code)
 	}
-	if rr.Header().Get("X-Frame-Options") != "DENY" {
-		t.Fatalf("missing frame deny")
+	if rr.Header().Get("Access-Control-Allow-Origin") != "http://localhost:5173" {
+		t.Fatalf("origin=%q", rr.Header().Get("Access-Control-Allow-Origin"))
+	}
+}
+
+func TestCORSRejectsUnknownOrigin(t *testing.T) {
+	h := httpx.CORS([]string{"http://localhost:5173"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/v1/projects", nil)
+	req.Header.Set("Origin", "http://evil.example")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if rr.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Fatal("unexpected allow origin")
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("code=%d", rr.Code)
 	}
 }
 

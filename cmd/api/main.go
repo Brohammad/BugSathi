@@ -188,10 +188,12 @@ func main() {
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpx.RequestIDs(
-			httpx.SecurityHeaders(
-				httpx.RateLimit(cfg.Hardening.RateLimit, metrics,
-					httpx.MaxBodyBytes(cfg.Hardening.MaxBodyBytes,
-						observability.Middleware("api", metrics, mux),
+			httpx.CORS(cfg.Hardening.CORSOrigins,
+				httpx.SecurityHeaders(
+					httpx.RateLimit(cfg.Hardening.RateLimit, metrics,
+						httpx.MaxBodyBytes(cfg.Hardening.MaxBodyBytes,
+							observability.Middleware("api", metrics, mux),
+						),
 					),
 				),
 			),

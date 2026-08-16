@@ -12,7 +12,7 @@ else
   GO ?= go
 endif
 
-.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race build build-images run-api run-worker health migrate fmt vet ci chaos-drill
+.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race build build-images run-api run-worker health migrate fmt vet ci chaos-drill web-install web-dev web-build
 
 help:
 	@echo "Targets:"
@@ -30,6 +30,9 @@ help:
 	@echo "  make migrate      Apply SQL migrations"
 	@echo "  make run-api      Run API on :8080 (needs migrate)"
 	@echo "  make run-worker   Run worker health on :8081"
+	@echo "  make web-install  npm install in web/"
+	@echo "  make web-dev      Vite UI on :5173 (proxies API)"
+	@echo "  make web-build    Production build of web/"
 	@echo "  make health       Curl local health endpoints"
 	@echo "  make chaos-drill  Postgres stop/start readiness drill (needs up-prod)"
 	@echo "  make ci           fmt + vet + test"
@@ -131,6 +134,15 @@ health:
 
 chaos-drill:
 	@./scripts/chaos-drill.sh
+
+web-install:
+	cd web && npm install
+
+web-dev:
+	cd web && npm run dev
+
+web-build:
+	cd web && npm run build
 
 fmt: ensure-go
 	"$(GO)" fmt ./...

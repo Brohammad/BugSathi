@@ -98,6 +98,12 @@
 - Owner-gated `POST .../recordings/{id}/reprocess` re-emits `RecordingUploaded`
 - Metric `bugsathi_dlq_published_total`
 
+### M16 — Web UI
+- Vite + React + TypeScript SPA in `web/`
+- Auth, projects, screen/file capture upload, report review, comments, share links
+- API CORS via `CORS_ORIGINS` (Vite defaults)
+- ADR 0024
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
@@ -109,6 +115,6 @@
 | 5 | M9–M10 |
 | 6 | M11–M12 |
 | 7 | M13–M14 |
-| 8 | M15+ |
+| 8 | M15–M16 |
 
 Depth over speed: a milestone can span multiple sessions.

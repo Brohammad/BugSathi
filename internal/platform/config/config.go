@@ -82,6 +82,7 @@ type CacheConfig struct {
 
 type HardeningConfig struct {
 	MaxBodyBytes int64
+	CORSOrigins  []string
 	RateLimit    RateLimitConfig
 	KafkaRetry   KafkaRetryConfig
 }
@@ -154,6 +155,7 @@ func Load() (Config, error) {
 		},
 		Hardening: HardeningConfig{
 			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
+			CORSOrigins:  getenvCSV("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
 			RateLimit: RateLimitConfig{
 				RPS:       getenvFloat("RATE_LIMIT_RPS", 20),
 				Burst:     getenvInt("RATE_LIMIT_BURST", 40),
@@ -231,6 +233,19 @@ func getenvDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func getenvCSV(key, fallback string) []string {
+	raw := getenv(key, fallback)
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ShutdownTimeout is the graceful shutdown window for HTTP servers.

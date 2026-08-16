@@ -4,15 +4,17 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 15 — DLQ + reprocess**
+**Milestone 16 — Web UI**
 
 ```bash
-cp .env.prod.example .env.prod
-make up-prod
-curl -s localhost:8080/readyz
-# owner reprocess a FAILED recording:
-# curl -X POST localhost:8080/v1/projects/$PID/recordings/$RID/reprocess \
-#   -H "Authorization: Bearer $ACCESS"
+# API + worker (separate terminals)
+make up && make migrate
+make run-api
+make run-worker
+
+# Browser UI
+make web-dev
+# open http://localhost:5173
 ```
 
 ```bash
@@ -48,9 +50,9 @@ curl -s localhost:8080/v1/projects -H "Authorization: Bearer $ACCESS" \
   -H 'Content-Type: application/json' -d '{"name":"Demo"}'
 ```
 
-Requires Docker Compose and Go 1.24+. A local toolchain may live under `.tools/go` (gitignored).
+Requires Docker Compose, Go 1.24+, and Node 20+ for the UI. A local Go toolchain may live under `.tools/go` (gitignored).
 
-## MVP capabilities (planned)
+## MVP capabilities
 
 - Screen recording upload → MinIO
 - Frame extraction → ffmpeg in **Media Worker only**
@@ -60,6 +62,7 @@ Requires Docker Compose and Go 1.24+. A local toolchain may live under `.tools/g
 - Shareable report links
 - Ordered pipeline via Kafka partition keys
 - Workers write Postgres directly; HTTP API for browsers
+- React web UI (`web/`) for capture + report review
 - PostgreSQL metadata
 
 ## Philosophy
