@@ -36,7 +36,7 @@ export function ReportPage() {
     setError('')
     try {
       const res = await api.createShare(projectId, reportId)
-      const url = `${window.location.origin}/s/${res.share.token}`
+      const url = `${window.location.origin}/share/${res.share.token}`
       setShareUrl(url)
       await navigator.clipboard.writeText(url).catch(() => undefined)
     } catch (err) {

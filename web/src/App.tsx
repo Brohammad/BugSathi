@@ -21,7 +21,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
-        <Route path="/s/:token" element={<SharePage />} />
+        {/* /s/:token is the API's public JSON endpoint, so the UI renders shares here. */}
+        <Route path="/share/:token" element={<SharePage />} />
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             <Route index element={<ProjectsPage />} />
