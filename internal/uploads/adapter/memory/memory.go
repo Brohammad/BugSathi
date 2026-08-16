@@ -27,26 +27,35 @@ func (o *OutboxRepo) add(m port.OutboxMessage) {
 	o.msgs = append(o.msgs, m)
 }
 
-func (o *OutboxRepo) ListUnpublished(_ context.Context, limit int) ([]port.OutboxMessage, error) {
+func (o *OutboxRepo) WithClaimed(ctx context.Context, limit int, fn func(context.Context, []port.OutboxMessage) error) error {
+	if limit <= 0 {
+		return nil
+	}
+	// Hold the mutex for the whole claim+fn+mark cycle so concurrent Flush
+	// callers (simulating API+worker relays) cannot double-claim a row.
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	var out []port.OutboxMessage
+
+	var claimed []port.OutboxMessage
 	for _, m := range o.msgs {
 		if o.published[m.ID] {
 			continue
 		}
-		out = append(out, m)
-		if len(out) >= limit {
+		claimed = append(claimed, m)
+		if len(claimed) >= limit {
 			break
 		}
 	}
-	return out, nil
-}
+	if len(claimed) == 0 {
+		return nil
+	}
 
-func (o *OutboxRepo) MarkPublished(_ context.Context, id int64, _ time.Time) error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.published[id] = true
+	if err := fn(ctx, claimed); err != nil {
+		return err
+	}
+	for _, m := range claimed {
+		o.published[m.ID] = true
+	}
 	return nil
 }
 

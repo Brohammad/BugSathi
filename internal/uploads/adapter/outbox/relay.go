@@ -45,28 +45,25 @@ func (r *Relay) Run(ctx context.Context) {
 	}
 }
 
+// Flush claims a batch of unpublished rows (SKIP LOCKED / mutex), publishes
+// each to Kafka, then marks them published in the same claim transaction.
 func (r *Relay) Flush(ctx context.Context) error {
-	msgs, err := r.repo.ListUnpublished(ctx, r.batch)
-	if err != nil {
-		return err
-	}
-	for _, m := range msgs {
-		headers := map[string]string{}
-		if m.CorrelationID != "" {
-			headers["correlation_id"] = m.CorrelationID
+	return r.repo.WithClaimed(ctx, r.batch, func(ctx context.Context, msgs []port.OutboxMessage) error {
+		for _, m := range msgs {
+			headers := map[string]string{}
+			if m.CorrelationID != "" {
+				headers["correlation_id"] = m.CorrelationID
+			}
+			if err := r.pub.Publish(ctx, m.Topic, m.PartitionKey, m.Payload, headers); err != nil {
+				return err
+			}
+			r.log.Info("outbox published",
+				"outbox_id", m.ID,
+				"topic", m.Topic,
+				"key", m.PartitionKey,
+				"correlation_id", m.CorrelationID,
+			)
 		}
-		if err := r.pub.Publish(ctx, m.Topic, m.PartitionKey, m.Payload, headers); err != nil {
-			return err
-		}
-		if err := r.repo.MarkPublished(ctx, m.ID, time.Now().UTC()); err != nil {
-			return err
-		}
-		r.log.Info("outbox published",
-			"outbox_id", m.ID,
-			"topic", m.Topic,
-			"key", m.PartitionKey,
-			"correlation_id", m.CorrelationID,
-		)
-	}
-	return nil
+		return nil
+	})
 }

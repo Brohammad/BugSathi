@@ -19,8 +19,11 @@ type RecordingRepository interface {
 }
 
 type OutboxRepository interface {
-	ListUnpublished(ctx context.Context, limit int) ([]OutboxMessage, error)
-	MarkPublished(ctx context.Context, id int64, at time.Time) error
+	// WithClaimed locks up to limit unpublished rows, runs fn, and on success
+	// marks them published in the same transaction. Concurrent callers using
+	// FOR UPDATE SKIP LOCKED (Postgres) or an in-process mutex (memory) never
+	// claim the same row. If fn fails, the claim is released and rows stay unpublished.
+	WithClaimed(ctx context.Context, limit int, fn func(ctx context.Context, msgs []OutboxMessage) error) error
 }
 
 type OutboxMessage struct {

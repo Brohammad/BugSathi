@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Brohammad/BugSathi/internal/uploads/domain"
@@ -116,32 +117,59 @@ func NewOutboxRepo(pool *pgxpool.Pool) *OutboxRepo {
 	return &OutboxRepo{pool: pool}
 }
 
-func (r *OutboxRepo) ListUnpublished(ctx context.Context, limit int) ([]port.OutboxMessage, error) {
+func (r *OutboxRepo) WithClaimed(ctx context.Context, limit int, fn func(context.Context, []port.OutboxMessage) error) error {
+	if limit <= 0 {
+		return nil
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) // no-op after Commit
+
 	const q = `
 		SELECT id, topic, partition_key, payload, correlation_id, created_at
 		FROM outbox
 		WHERE published_at IS NULL
 		ORDER BY id
-		LIMIT $1`
-	rows, err := r.pool.Query(ctx, q, limit)
+		LIMIT $1
+		FOR UPDATE SKIP LOCKED`
+	rows, err := tx.Query(ctx, q, limit)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer rows.Close()
-	var out []port.OutboxMessage
+	var msgs []port.OutboxMessage
 	for rows.Next() {
 		var m port.OutboxMessage
 		if err := rows.Scan(&m.ID, &m.Topic, &m.PartitionKey, &m.Payload, &m.CorrelationID, &m.CreatedAt); err != nil {
-			return nil, err
+			rows.Close()
+			return err
 		}
-		out = append(out, m)
+		msgs = append(msgs, m)
 	}
-	return out, rows.Err()
-}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		return nil
+	}
 
-func (r *OutboxRepo) MarkPublished(ctx context.Context, id int64, at time.Time) error {
-	_, err := r.pool.Exec(ctx, `UPDATE outbox SET published_at = $2 WHERE id = $1 AND published_at IS NULL`, id, at)
-	return err
+	if err := fn(ctx, msgs); err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	for _, m := range msgs {
+		tag, err := tx.Exec(ctx, `UPDATE outbox SET published_at = $2 WHERE id = $1 AND published_at IS NULL`, m.ID, now)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return fmt.Errorf("outbox mark published: id=%d rows=%d", m.ID, tag.RowsAffected())
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 type scannable interface {

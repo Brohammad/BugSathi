@@ -110,6 +110,11 @@
 - Transient `FetchMessage` errors backoff-retry instead of killing the worker
 - Shared `HandleWithRetries` / `FetchWithRetry` in `internal/platform/kafka`
 
+### M18 — Outbox claim locking
+- `WithClaimed` + Postgres `FOR UPDATE SKIP LOCKED` so API and worker relays cannot double-publish
+- Publish happens while rows are locked; mark `published_at` in the same transaction
+- Concurrent flush tests prove single publish; failed publish leaves row claimable
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
