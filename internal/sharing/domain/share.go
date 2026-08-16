@@ -10,11 +10,11 @@ import (
 )
 
 var (
-	ErrNotFound      = errors.New("share not found")
-	ErrForbidden     = errors.New("forbidden")
-	ErrInvalidInput  = errors.New("invalid input")
+	ErrNotFound       = errors.New("share not found")
+	ErrForbidden      = errors.New("forbidden")
+	ErrInvalidInput   = errors.New("invalid input")
 	ErrReportNotReady = errors.New("report is not ready to share")
-	ErrShareInactive = errors.New("share link is expired or revoked")
+	ErrShareInactive  = errors.New("share link is expired or revoked")
 )
 
 const TopicShareCreated = "bugsathi.share.created"

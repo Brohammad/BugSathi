@@ -12,6 +12,7 @@ vendor/
 # Env / secrets
 .env
 .env.local
+.env.prod
 *.pem
 
 # IDE / OS

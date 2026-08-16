@@ -185,6 +185,50 @@ func (s *Service) Get(ctx context.Context, userID, projectID, recordingID uuid.U
 	return toDTO(rec), nil
 }
 
+// Reprocess re-emits RecordingUploaded via the outbox so media/AI can run again.
+// Owner-only. Allowed for FAILED, UPLOADED, PROCESSING, or READY.
+func (s *Service) Reprocess(ctx context.Context, userID, projectID, recordingID uuid.UUID) (RecordingDTO, error) {
+	if err := s.access.EnsureOwner(ctx, userID, projectID); err != nil {
+		return RecordingDTO{}, err
+	}
+	rec, err := s.recordings.Get(ctx, recordingID)
+	if err != nil {
+		return RecordingDTO{}, err
+	}
+	if rec.ProjectID != projectID {
+		return RecordingDTO{}, domain.ErrNotFound
+	}
+	switch rec.Status {
+	case domain.StatusFailed, domain.StatusUploaded, domain.StatusProcessing, domain.StatusReady:
+		// ok
+	default:
+		return RecordingDTO{}, domain.ErrIllegalTransition
+	}
+	if rec.ByteSize == nil {
+		return RecordingDTO{}, domain.ErrObjectMissing
+	}
+
+	payload, err := json.Marshal(domain.RecordingUploadedEvent{
+		SchemaVersion: 1,
+		RecordingID:   rec.ID.String(),
+		ProjectID:     rec.ProjectID.String(),
+		ObjectKey:     rec.StorageKey,
+		ContentType:   rec.ContentType,
+		ByteSize:      *rec.ByteSize,
+		Checksum:      rec.Checksum,
+		Metadata:      rec.Metadata,
+		CorrelationID: rec.CorrelationID,
+		OccurredAt:    s.now().UTC(),
+	})
+	if err != nil {
+		return RecordingDTO{}, err
+	}
+	if err := s.recordings.InsertOutbox(ctx, domain.TopicRecordingUploaded, rec.ID.String(), payload, rec.CorrelationID); err != nil {
+		return RecordingDTO{}, err
+	}
+	return toDTO(rec), nil
+}
+
 func extensionFor(contentType, filename string) string {
 	filename = strings.TrimSpace(filename)
 	if filename != "" {

@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,26 +29,35 @@ func (o *OutboxRepo) add(m port.OutboxMessage) {
 	o.msgs = append(o.msgs, m)
 }
 
-func (o *OutboxRepo) ListUnpublished(_ context.Context, limit int) ([]port.OutboxMessage, error) {
+func (o *OutboxRepo) WithClaimed(ctx context.Context, limit int, fn func(context.Context, []port.OutboxMessage) error) error {
+	if limit <= 0 {
+		return nil
+	}
+	// Hold the mutex for the whole claim+fn+mark cycle so concurrent Flush
+	// callers (simulating API+worker relays) cannot double-claim a row.
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	var out []port.OutboxMessage
+
+	var claimed []port.OutboxMessage
 	for _, m := range o.msgs {
 		if o.published[m.ID] {
 			continue
 		}
-		out = append(out, m)
-		if len(out) >= limit {
+		claimed = append(claimed, m)
+		if len(claimed) >= limit {
 			break
 		}
 	}
-	return out, nil
-}
+	if len(claimed) == 0 {
+		return nil
+	}
 
-func (o *OutboxRepo) MarkPublished(_ context.Context, id int64, _ time.Time) error {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.published[id] = true
+	if err := fn(ctx, claimed); err != nil {
+		return err
+	}
+	for _, m := range claimed {
+		o.published[m.ID] = true
+	}
 	return nil
 }
 
@@ -119,6 +130,22 @@ func (r *RecordingRepo) CompleteWithOutbox(
 	return rec, nil
 }
 
+func (r *RecordingRepo) InsertOutbox(
+	_ context.Context,
+	eventTopic, partitionKey string,
+	payload []byte,
+	correlationID string,
+) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id := atomic.AddInt64(&r.nextOutbox, 1)
+	r.outbox.add(port.OutboxMessage{
+		ID: id, Topic: eventTopic, PartitionKey: partitionKey,
+		Payload: payload, CorrelationID: correlationID, CreatedAt: time.Now(),
+	})
+	return nil
+}
+
 type Storage struct {
 	mu   sync.Mutex
 	objs map[string][]byte
@@ -150,12 +177,63 @@ func (s *Storage) Put(key, contentType string, body []byte) {
 	s.ct[key] = contentType
 }
 
+func (s *Storage) Has(key string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, ok := s.objs[key]
+	return ok
+}
+
+func (s *Storage) Keys() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]string, 0, len(s.objs))
+	for k := range s.objs {
+		out = append(out, k)
+	}
+	return out
+}
+
+func (s *Storage) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.objs, key)
+	delete(s.ct, key)
+	return nil
+}
+
+func (s *Storage) DeletePrefix(_ context.Context, prefix string) error {
+	if prefix == "" {
+		return fmt.Errorf("refusing to delete with empty prefix")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for k := range s.objs {
+		if strings.HasPrefix(k, prefix) {
+			delete(s.objs, k)
+			delete(s.ct, k)
+		}
+	}
+	return nil
+}
+
 type AccessOK struct{}
 
 func (AccessOK) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (AccessOK) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error  { return nil }
 
 type AccessDeny struct{}
 
 func (AccessDeny) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error {
+	return domain.ErrForbidden
+}
+func (AccessDeny) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error {
+	return domain.ErrForbidden
+}
+
+type AccessMemberOnly struct{}
+
+func (AccessMemberOnly) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (AccessMemberOnly) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error {
 	return domain.ErrForbidden
 }

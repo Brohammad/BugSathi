@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -12,12 +13,17 @@ import (
 )
 
 type Service struct {
-	repo port.Repository
-	now  func() time.Time
+	repo    port.Repository
+	objects port.ObjectStore
+	log     *slog.Logger
+	now     func() time.Time
 }
 
-func New(repo port.Repository) *Service {
-	return &Service{repo: repo, now: time.Now}
+func New(repo port.Repository, objects port.ObjectStore, log *slog.Logger) *Service {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Service{repo: repo, objects: objects, log: log, now: time.Now}
 }
 
 type ProjectDTO struct {
@@ -109,7 +115,23 @@ func (s *Service) Delete(ctx context.Context, userID, projectID uuid.UUID) error
 	if _, err := s.requireOwner(ctx, projectID, userID); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, projectID)
+	// DB first so the user-facing delete succeeds even if MinIO is down; object
+	// cleanup is best-effort under the ADR 0003 project prefix.
+	if err := s.repo.Delete(ctx, projectID); err != nil {
+		return err
+	}
+	if s.objects == nil {
+		return nil
+	}
+	prefix := "projects/" + projectID.String() + "/"
+	if err := s.objects.DeletePrefix(ctx, prefix); err != nil {
+		s.log.Warn("object cleanup after project delete failed",
+			"project_id", projectID.String(),
+			"prefix", prefix,
+			"error", err,
+		)
+	}
+	return nil
 }
 
 func (s *Service) AddMember(ctx context.Context, actorID, projectID, memberUserID uuid.UUID, roleStr string) (MemberDTO, error) {
@@ -153,6 +175,12 @@ func (s *Service) ListMembers(ctx context.Context, userID, projectID uuid.UUID) 
 // EnsureMember is used by other contexts (e.g. uploads) for authorization.
 func (s *Service) EnsureMember(ctx context.Context, userID, projectID uuid.UUID) error {
 	_, err := s.requireMember(ctx, projectID, userID)
+	return err
+}
+
+// EnsureOwner is used by privileged mutations (e.g. recording reprocess).
+func (s *Service) EnsureOwner(ctx context.Context, userID, projectID uuid.UUID) error {
+	_, err := s.requireOwner(ctx, projectID, userID)
 	return err
 }
 

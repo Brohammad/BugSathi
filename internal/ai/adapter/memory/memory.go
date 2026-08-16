@@ -12,11 +12,11 @@ import (
 )
 
 type Store struct {
-	mu        sync.Mutex
-	analyses  map[string]domain.Analysis
-	reports   map[uuid.UUID]domain.Report
-	meta      map[uuid.UUID]meta
-	outbox    []port.OutboxEvent
+	mu       sync.Mutex
+	analyses map[string]domain.Analysis
+	reports  map[uuid.UUID]domain.Report
+	meta     map[uuid.UUID]meta
+	outbox   []port.OutboxEvent
 }
 
 type meta struct {

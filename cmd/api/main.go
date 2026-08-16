@@ -12,12 +12,13 @@ import (
 
 	authhttp "github.com/Brohammad/BugSathi/internal/auth/adapter/httpapi"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/jwtmgr"
-	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/password"
+	authpg "github.com/Brohammad/BugSathi/internal/auth/adapter/postgres"
 	authsvc "github.com/Brohammad/BugSathi/internal/auth/service"
 	collabhttp "github.com/Brohammad/BugSathi/internal/collab/adapter/httpapi"
 	collabhub "github.com/Brohammad/BugSathi/internal/collab/adapter/hub"
 	collabpg "github.com/Brohammad/BugSathi/internal/collab/adapter/postgres"
+	collabdomain "github.com/Brohammad/BugSathi/internal/collab/domain"
 	collabsvc "github.com/Brohammad/BugSathi/internal/collab/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
@@ -26,14 +27,17 @@ import (
 	platformkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
+	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
 	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
 	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
 	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
+	reportcache "github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
 	reporthttp "github.com/Brohammad/BugSathi/internal/reports/adapter/httpapi"
 	reportpg "github.com/Brohammad/BugSathi/internal/reports/adapter/postgres"
 	reportsvc "github.com/Brohammad/BugSathi/internal/reports/service"
 	sharehttp "github.com/Brohammad/BugSathi/internal/sharing/adapter/httpapi"
 	sharepg "github.com/Brohammad/BugSathi/internal/sharing/adapter/postgres"
+	sharingdomain "github.com/Brohammad/BugSathi/internal/sharing/domain"
 	sharesvc "github.com/Brohammad/BugSathi/internal/sharing/service"
 	uploadaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/access"
 	uploadhttp "github.com/Brohammad/BugSathi/internal/uploads/adapter/httpapi"
@@ -71,7 +75,7 @@ func main() {
 	reg := prometheus.NewRegistry()
 	metrics := observability.NewMetrics(reg)
 
-	pool, err := db.Connect(ctx, cfg.Postgres.DSN())
+	pool, err := db.ConnectWithPool(ctx, cfg.Postgres.DSN(), cfg.Postgres)
 	if err != nil {
 		log.Error("postgres connect failed", "error", err)
 		os.Exit(1)
@@ -93,9 +97,6 @@ func main() {
 	)
 	authHandler := authhttp.NewHandler(authService)
 
-	projectService := projectsvc.New(projectpg.NewRepo(pool))
-	projectHandler := projecthttp.NewHandler(projectService)
-
 	objectStore, err := uploadminio.New(cfg.MinIO)
 	if err != nil {
 		log.Error("minio client failed", "error", err)
@@ -104,6 +105,9 @@ func main() {
 	if err := objectStore.EnsureBucket(ctx); err != nil {
 		log.Warn("minio ensure bucket", "error", err)
 	}
+
+	projectService := projectsvc.New(projectpg.NewRepo(pool), objectStore, log)
+	projectHandler := projecthttp.NewHandler(projectService)
 
 	uploadService := uploadsvc.New(
 		uploadpg.NewRecordingRepo(pool),
@@ -117,6 +121,7 @@ func main() {
 		reportpg.NewRepo(pool),
 		uploadaccess.New(projectService),
 		objectStore,
+		reportcache.NewReportCache(cfg.Cache.ReportTTL),
 	)
 	reportHandler := reporthttp.NewHandler(reportService)
 
@@ -139,8 +144,14 @@ func main() {
 
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
-	if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, domain.TopicRecordingUploaded, 3); err != nil {
-		log.Warn("ensure kafka topic", "error", err)
+	for _, topic := range []string{
+		domain.TopicRecordingUploaded,
+		sharingdomain.TopicShareCreated,
+		collabdomain.TopicCommentCreated,
+	} {
+		if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, topic, 3); err != nil {
+			log.Warn("ensure kafka topic", "topic", topic, "error", err)
+		}
 	}
 	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
 	go relay.Run(ctx)
@@ -163,6 +174,10 @@ func main() {
 		health.WriteReady(w, true, map[string]string{"postgres": "up"})
 	})
 	mux.Handle("GET /metrics", observability.Handler(reg))
+	if cfg.Observability.EnablePprof {
+		pprofx.Mount(mux)
+		log.Warn("pprof enabled at /debug/pprof/")
+	}
 	authHandler.RegisterRoutes(mux)
 	projectHandler.RegisterRoutes(mux, protect)
 	uploadHandler.RegisterRoutes(mux, protect)
@@ -171,8 +186,18 @@ func main() {
 	collabHandler.RegisterRoutes(mux, protect)
 
 	server := &http.Server{
-		Addr:    cfg.HTTPAddr,
-		Handler: httpx.RequestIDs(observability.Middleware("api", metrics, mux)),
+		Addr: cfg.HTTPAddr,
+		Handler: httpx.RequestIDs(
+			httpx.CORS(cfg.Hardening.CORSOrigins,
+				httpx.SecurityHeaders(
+					httpx.RateLimit(cfg.Hardening.RateLimit, metrics,
+						httpx.MaxBodyBytes(cfg.Hardening.MaxBodyBytes,
+							observability.Middleware("api", metrics, mux),
+						),
+					),
+				),
+			),
+		),
 	}
 
 	errCh := make(chan error, 1)

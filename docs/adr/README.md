@@ -21,5 +21,12 @@
 | [0017](0017-sharing.md) | Shareable report links | Accepted |
 | [0018](0018-realtime-collaboration.md) | Realtime comments + SSE presence | Accepted |
 | [0019](0019-observability-stack.md) | Prometheus metrics + OTLP traces | Accepted |
+| [0020](0020-production-deployment.md) | Production Compose + K8s sketches | Accepted |
+| [0021](0021-performance.md) | Pools, keyframes, report cache, pprof | Accepted |
+| [0022](0022-production-hardening.md) | Rate limits, headers, backoff, SLOs | Accepted |
+| [0023](0023-dlq-reprocess.md) | Kafka DLQ + owner reprocess API | Accepted |
+| [0024](0024-web-ui.md) | React + Vite web UI | Accepted |
+| [0025](0025-media-processing-claim.md) | Media processing claim (expiring lease) | Accepted |
+| [0026](0026-object-cleanup-on-delete.md) | Object cleanup on project delete | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

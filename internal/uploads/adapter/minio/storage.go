@@ -93,3 +93,36 @@ func (s *Storage) PresignGet(ctx context.Context, key string, expiry time.Durati
 	}
 	return u.String(), nil
 }
+
+// Delete removes one object. Missing keys are treated as success so cleanup is
+// safe to retry after a partial failure.
+func (s *Storage) Delete(ctx context.Context, key string) error {
+	err := s.client.RemoveObject(ctx, s.bucket, key, miniosdk.RemoveObjectOptions{})
+	if err == nil {
+		return nil
+	}
+	errResp := miniosdk.ToErrorResponse(err)
+	if errResp.Code == "NoSuchKey" || errResp.StatusCode == 404 {
+		return nil
+	}
+	return err
+}
+
+// DeletePrefix removes every object under prefix (recursive). Used after a
+// project is deleted so source/frames/thumb all go with it.
+func (s *Storage) DeletePrefix(ctx context.Context, prefix string) error {
+	if prefix == "" {
+		return fmt.Errorf("refusing to delete with empty prefix")
+	}
+	opts := miniosdk.ListObjectsOptions{Prefix: prefix, Recursive: true}
+	var firstErr error
+	for obj := range s.client.ListObjects(ctx, s.bucket, opts) {
+		if obj.Err != nil {
+			return obj.Err
+		}
+		if err := s.Delete(ctx, obj.Key); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}

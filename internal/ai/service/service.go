@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Brohammad/BugSathi/internal/ai/domain"
+	"github.com/Brohammad/BugSathi/internal/ai/keyframes"
 	"github.com/Brohammad/BugSathi/internal/ai/port"
 	"github.com/google/uuid"
 )
@@ -53,10 +54,7 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		return err
 	}
 
-	frameKeys := evt.FrameKeys
-	if len(frameKeys) > s.maxFrames {
-		frameKeys = frameKeys[:s.maxFrames]
-	}
+	frameKeys := keyframes.Select(evt.FrameKeys, s.maxFrames)
 
 	result, err := s.analyzer.Analyze(ctx, domain.AnalysisInput{
 		RecordingID:   evt.RecordingID,

@@ -21,7 +21,7 @@ func TestShareCreatePublicRevoke(t *testing.T) {
 	reports := memory.NewReports(port.PublicReport{
 		ReportID: reportID, ProjectID: projectID, Status: "READY",
 		Title: "Bug", Summary: "Sum", Steps: json.RawMessage(`["a"]`),
-		Frames: []port.PublicFrame{{Ordinal: 0, StorageKey: "f.jpg", ContentType: "image/jpeg"}},
+		Frames:   []port.PublicFrame{{Ordinal: 0, StorageKey: "f.jpg", ContentType: "image/jpeg"}},
 		ThumbKey: "t.jpg",
 	})
 	svc := service.New(repo, memory.AccessOK{}, reports, memory.Signer{})

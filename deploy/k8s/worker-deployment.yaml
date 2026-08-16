@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bugsathi-worker
+  namespace: bugsathi
+  labels:
+    app: bugsathi-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bugsathi-worker
+  template:
+    metadata:
+      labels:
+        app: bugsathi-worker
+    spec:
+      containers:
+        - name: worker
+          image: bugsathi/worker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          envFrom:
+            - configMapRef:
+                name: bugsathi-config
+            - secretRef:
+                name: bugsathi-secrets
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bugsathi-worker
+  namespace: bugsathi
+spec:
+  selector:
+    app: bugsathi-worker
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http

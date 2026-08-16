@@ -80,3 +80,96 @@ func TestCreateForbidden(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestReprocessFailedRecording(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessOK{}, time.Minute)
+
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm", Filename: "bug.webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "video/webm", []byte("fake-video"))
+	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	rec, err := recs.Get(ctx, created.Recording.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Status = domain.StatusFailed
+	if _, err := recs.Update(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+
+	before := len(outbox.Messages())
+	dto, err := svc.Reprocess(ctx, user, project, created.Recording.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dto.Status != domain.StatusFailed {
+		t.Fatalf("status=%s", dto.Status)
+	}
+	if len(outbox.Messages()) != before+1 {
+		t.Fatalf("outbox=%d want %d", len(outbox.Messages()), before+1)
+	}
+	last := outbox.Messages()[len(outbox.Messages())-1]
+	if last.Topic != domain.TopicRecordingUploaded {
+		t.Fatalf("topic=%s", last.Topic)
+	}
+}
+
+func TestReprocessRequiresOwner(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessMemberOnly{}, time.Minute)
+
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "video/webm", []byte("x"))
+	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != nil {
+		t.Fatal(err)
+	}
+	rec, _ := recs.Get(ctx, created.Recording.ID)
+	rec.Status = domain.StatusFailed
+	_, _ = recs.Update(ctx, rec)
+
+	if _, err := svc.Reprocess(ctx, user, project, created.Recording.ID); err != domain.ErrForbidden {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestReprocessUploadingIllegal(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	svc := service.New(recs, memory.NewStorage(), memory.AccessOK{}, time.Minute)
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Reprocess(ctx, user, project, created.Recording.ID); err != domain.ErrIllegalTransition {
+		t.Fatalf("got %v", err)
+	}
+}

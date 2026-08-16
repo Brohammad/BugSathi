@@ -19,11 +19,23 @@ type Config struct {
 	Kafka         KafkaConfig
 	Auth          AuthConfig
 	AI            AIConfig
+	Media         MediaConfig
 	Observability ObservabilityConfig
+	Cache         CacheConfig
+	Hardening     HardeningConfig
+}
+
+// MediaConfig controls the processing claim that keeps two workers from
+// extracting frames for the same recording at the same time.
+type MediaConfig struct {
+	WorkerID   string        // claim owner; defaults to hostname-pid
+	ClaimLease time.Duration // lease validity without renewal
+	ClaimRenew time.Duration // renewal interval; must be shorter than the lease
 }
 
 type ObservabilityConfig struct {
 	OTLPEndpoint string // e.g. http://localhost:4318/v1/traces ; empty disables export
+	EnablePprof  bool
 }
 
 type AIConfig struct {
@@ -42,12 +54,15 @@ type AuthConfig struct {
 }
 
 type PostgresConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DB       string
-	SSLMode  string
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	DB              string
+	SSLMode         string
+	MaxConns        int32
+	MinConns        int32
+	MaxConnLifetime time.Duration
 }
 
 func (p PostgresConfig) DSN() string {
@@ -70,6 +85,35 @@ type KafkaConfig struct {
 	ClientID string
 }
 
+type CacheConfig struct {
+	ReportTTL time.Duration // 0 disables
+}
+
+type HardeningConfig struct {
+	MaxBodyBytes int64
+	CORSOrigins  []string
+	RateLimit    RateLimitConfig
+	KafkaRetry   KafkaRetryConfig
+}
+
+type RateLimitConfig struct {
+	RPS       float64
+	Burst     int
+	AuthRPS   float64
+	AuthBurst int
+	Window    time.Duration
+}
+
+func (c RateLimitConfig) Enabled() bool {
+	return c.RPS > 0
+}
+
+type KafkaRetryConfig struct {
+	Base        time.Duration
+	Max         time.Duration
+	MaxAttempts int // after this many handler failures, message goes to DLQ (0 = default 5)
+}
+
 // Load reads configuration from environment variables with safe local defaults.
 func Load() (Config, error) {
 	cfg := Config{
@@ -77,12 +121,15 @@ func Load() (Config, error) {
 		HTTPAddr: getenv("HTTP_ADDR", ":8080"),
 		LogLevel: getenv("LOG_LEVEL", "info"),
 		Postgres: PostgresConfig{
-			Host:     getenv("POSTGRES_HOST", "localhost"),
-			Port:     getenvInt("POSTGRES_PORT", 5432),
-			User:     getenv("POSTGRES_USER", "bugsathi"),
-			Password: getenv("POSTGRES_PASSWORD", "bugsathi"),
-			DB:       getenv("POSTGRES_DB", "bugsathi"),
-			SSLMode:  getenv("POSTGRES_SSLMODE", "disable"),
+			Host:            getenv("POSTGRES_HOST", "localhost"),
+			Port:            getenvInt("POSTGRES_PORT", 5432),
+			User:            getenv("POSTGRES_USER", "bugsathi"),
+			Password:        getenv("POSTGRES_PASSWORD", "bugsathi"),
+			DB:              getenv("POSTGRES_DB", "bugsathi"),
+			SSLMode:         getenv("POSTGRES_SSLMODE", "disable"),
+			MaxConns:        int32(getenvInt("POSTGRES_MAX_CONNS", 10)),
+			MinConns:        int32(getenvInt("POSTGRES_MIN_CONNS", 1)),
+			MaxConnLifetime: getenvDuration("POSTGRES_MAX_CONN_LIFETIME", time.Hour),
 		},
 		MinIO: MinIOConfig{
 			Endpoint:  getenv("MINIO_ENDPOINT", "localhost:9000"),
@@ -108,8 +155,33 @@ func Load() (Config, error) {
 			Timeout:   getenvDuration("AI_TIMEOUT", 60*time.Second),
 			MaxFrames: getenvInt("AI_MAX_FRAMES", 5),
 		},
+		Media: MediaConfig{
+			WorkerID:   getenv("WORKER_ID", ""),
+			ClaimLease: getenvDuration("MEDIA_CLAIM_LEASE", 2*time.Minute),
+			ClaimRenew: getenvDuration("MEDIA_CLAIM_RENEW", 30*time.Second),
+		},
 		Observability: ObservabilityConfig{
 			OTLPEndpoint: getenv("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+			EnablePprof:  getenvBool("ENABLE_PPROF", false),
+		},
+		Cache: CacheConfig{
+			ReportTTL: getenvDuration("REPORT_CACHE_TTL", 30*time.Second),
+		},
+		Hardening: HardeningConfig{
+			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
+			CORSOrigins:  getenvCSV("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
+			RateLimit: RateLimitConfig{
+				RPS:       getenvFloat("RATE_LIMIT_RPS", 20),
+				Burst:     getenvInt("RATE_LIMIT_BURST", 40),
+				AuthRPS:   getenvFloat("AUTH_RATE_LIMIT_RPS", 5),
+				AuthBurst: getenvInt("AUTH_RATE_LIMIT_BURST", 10),
+				Window:    getenvDuration("RATE_LIMIT_WINDOW", time.Minute),
+			},
+			KafkaRetry: KafkaRetryConfig{
+				Base:        getenvDuration("KAFKA_RETRY_BASE", time.Second),
+				Max:         getenvDuration("KAFKA_RETRY_MAX", 30*time.Second),
+				MaxAttempts: getenvInt("KAFKA_RETRY_MAX_ATTEMPTS", 5),
+			},
 		},
 	}
 
@@ -141,6 +213,18 @@ func getenvInt(key string, fallback int) int {
 	return n
 }
 
+func getenvFloat(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return fallback
+	}
+	return f
+}
+
 func getenvBool(key string, fallback bool) bool {
 	v := os.Getenv(key)
 	if v == "" {
@@ -163,6 +247,19 @@ func getenvDuration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func getenvCSV(key, fallback string) []string {
+	raw := getenv(key, fallback)
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ShutdownTimeout is the graceful shutdown window for HTTP servers.

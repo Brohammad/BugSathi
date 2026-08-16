@@ -77,16 +77,56 @@
 - Outbox lag + AI latency + pipeline stage metrics
 
 ### M12 — Deployment
-- Production Compose or K8s manifests
-- Secrets, migrations job, health probes
+- Production Compose (`docker-compose.prod.yml`) with migrate job + api + worker
+- Docker HEALTHCHECK / Compose readiness on `/healthz` + `/readyz`
+- Secrets via `.env.prod` (gitignored); K8s Secret/ConfigMap sketches
+- `make up-prod` / `make build-images`
 
 ### M13 — Performance Optimization
-- Profiling, connection pools, keyframe selection
-- Caching hot report reads
+- Configurable Postgres pool (`POSTGRES_MAX_CONNS`, …)
+- Evenly spaced keyframe selection for AI (`AI_MAX_FRAMES`)
+- In-process report detail TTL cache (`REPORT_CACHE_TTL`)
+- Optional `ENABLE_PPROF=true` → `/debug/pprof/`
 
-### M14 — Production Hardening
-- Rate limits, security headers, chaos/retry drills
-- SLOs and runbooks
+### M14 — Production Hardening ✅
+- Rate limits, security headers, body caps, Kafka exponential retry
+- SLOs and runbooks (`docs/operations/`)
+- Chaos drill: `./scripts/chaos-drill.sh` (Postgres stop/start)
+
+### M15 — DLQ + Recording Reprocess
+- Max Kafka handler attempts → `{topic}.dlq` + commit source offset
+- Owner-gated `POST .../recordings/{id}/reprocess` re-emits `RecordingUploaded`
+- Metric `bugsathi_dlq_published_total`
+
+### M16 — Web UI
+- Vite + React + TypeScript SPA in `web/`
+- Auth, projects, screen/file capture upload, report review, comments, share links
+- API CORS via `CORS_ORIGINS` (Vite defaults)
+- ADR 0024
+
+### M17 — Kafka consumer at-least-once retries
+- Retry the **same** message on handler failure (no fetch-next-on-error skip)
+- DLQ + commit only after `KAFKA_RETRY_MAX_ATTEMPTS`
+- Transient `FetchMessage` errors backoff-retry instead of killing the worker
+- Shared `HandleWithRetries` / `FetchWithRetry` in `internal/platform/kafka`
+
+### M18 — Outbox claim locking
+- `WithClaimed` + Postgres `FOR UPDATE SKIP LOCKED` so API and worker relays cannot double-publish
+- Publish happens while rows are locked; mark `published_at` in the same transaction
+- Concurrent flush tests prove single publish; failed publish leaves row claimable
+
+### M19 — Media processing claim
+- `recordings.processing_owner` + `processing_expires_at` lease (migration `0008`)
+- One ffmpeg run per recording: overlapping deliveries are skipped and committed
+- Heartbeat renews the lease; owner-gated `FinalizeReady` / `MarkFailed` release it
+- Expired lease from a dead worker is reclaimed automatically
+- Metric `bugsathi_claim_skipped_total`; ADR 0025
+
+### M20 — Object cleanup on project delete
+- `DeletePrefix` on MinIO (+ memory) removes `projects/{id}/…` after DB cascade
+- HTTP delete stays 204 if MinIO cleanup fails (logged); missing keys are OK
+- Abandoned `UPLOADING` GC deferred; no per-recording delete API yet
+- ADR 0026
 
 ## Suggested weekly cadence (flexible)
 
@@ -99,5 +139,6 @@
 | 5 | M9–M10 |
 | 6 | M11–M12 |
 | 7 | M13–M14 |
+| 8 | M15–M16 |
 
 Depth over speed: a milestone can span multiple sessions.

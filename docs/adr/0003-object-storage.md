@@ -34,7 +34,8 @@ projects/{project_id}/recordings/{recording_id}/thumb.jpg
 **Negative**
 
 - Two-phase failure modes (object exists, DB missing — and reverse).
-- Need lifecycle rules for abandoned uploads (hardening milestone).
+- Need lifecycle rules for abandoned uploads (still deferred; project delete
+  cleans `projects/{id}/…` — ADR 0026).
 
 ## Alternatives
 

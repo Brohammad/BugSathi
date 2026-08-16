@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/Brohammad/BugSathi/internal/media/domain"
 	"github.com/Brohammad/BugSathi/internal/media/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
+	pkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	kafkago "github.com/segmentio/kafka-go"
@@ -18,27 +20,43 @@ import (
 )
 
 type Consumer struct {
-	reader  *kafkago.Reader
-	svc     *service.Service
-	log     *slog.Logger
-	metrics *observability.Metrics
+	reader   pkafka.MessageReader
+	svc      *service.Service
+	log      *slog.Logger
+	metrics  *observability.Metrics
+	retry    config.KafkaRetryConfig
+	pub      *pkafka.Publisher
+	attempts *pkafka.AttemptTracker
+	closer   func() error
 }
 
-func NewConsumer(cfg config.KafkaConfig, svc *service.Service, log *slog.Logger, metrics *observability.Metrics) *Consumer {
+func NewConsumer(
+	cfg config.KafkaConfig,
+	retry config.KafkaRetryConfig,
+	svc *service.Service,
+	log *slog.Logger,
+	metrics *observability.Metrics,
+	pub *pkafka.Publisher,
+) *Consumer {
+	r := kafkago.NewReader(kafkago.ReaderConfig{
+		Brokers:        cfg.Brokers,
+		GroupID:        "bugsathi-media",
+		Topic:          domain.TopicRecordingUploaded,
+		MinBytes:       1,
+		MaxBytes:       10e6,
+		MaxWait:        time.Second,
+		CommitInterval: 0,
+		StartOffset:    kafkago.FirstOffset,
+	})
 	return &Consumer{
-		reader: kafkago.NewReader(kafkago.ReaderConfig{
-			Brokers:        cfg.Brokers,
-			GroupID:        "bugsathi-media",
-			Topic:          domain.TopicRecordingUploaded,
-			MinBytes:       1,
-			MaxBytes:       10e6,
-			MaxWait:        time.Second,
-			CommitInterval: 0,
-			StartOffset:    kafkago.FirstOffset,
-		}),
-		svc:     svc,
-		log:     log,
-		metrics: metrics,
+		reader:   r,
+		svc:      svc,
+		log:      log,
+		metrics:  metrics,
+		retry:    retry,
+		pub:      pub,
+		attempts: pkafka.NewAttemptTracker(),
+		closer:   r.Close,
 	}
 }
 
@@ -46,18 +64,16 @@ func (c *Consumer) Run(ctx context.Context) error {
 	c.log.Info("media consumer started", "topic", domain.TopicRecordingUploaded, "group", "bugsathi-media")
 	tr := observability.Tracer("bugsathi/media")
 	for {
-		msg, err := c.reader.FetchMessage(ctx)
+		msg, err := pkafka.FetchWithRetry(ctx, c.reader, c.retry, c.log)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			return fmt.Errorf("fetch: %w", err)
+			// ctx canceled / shutdown
+			return nil
 		}
 
 		var evt domain.RecordingUploadedEvent
 		if err := json.Unmarshal(msg.Value, &evt); err != nil {
 			c.log.Error("invalid RecordingUploaded payload", "error", err)
-			if err := c.reader.CommitMessages(ctx, msg); err != nil {
+			if err := c.deadLetter(ctx, msg, 1, err); err != nil {
 				return err
 			}
 			continue
@@ -72,35 +88,85 @@ func (c *Consumer) Run(ctx context.Context) error {
 			"offset", msg.Offset,
 		)
 
-		start := time.Now()
-		spanCtx, span := tr.Start(msgCtx, "media.HandleUploaded")
-		span.SetAttributes(
-			attribute.String("recording_id", evt.RecordingID),
-			attribute.String("correlation_id", evt.CorrelationID),
+		err = pkafka.HandleWithRetries(ctx, c.reader, msg, c.retry, c.attempts,
+			func(attemptCtx context.Context) error {
+				start := time.Now()
+				spanCtx, span := tr.Start(attemptCtx, "media.HandleUploaded")
+				span.SetAttributes(
+					attribute.String("recording_id", evt.RecordingID),
+					attribute.String("correlation_id", evt.CorrelationID),
+				)
+				hErr := c.svc.HandleUploaded(spanCtx, evt)
+				if domain.IsClaimConflict(hErr) {
+					// Another worker owns this recording: the delivery is done
+					// from our side, so commit instead of retrying into the DLQ.
+					reason := claimSkipReason(hErr)
+					span.SetAttributes(attribute.String("claim_skip_reason", reason))
+					span.End()
+					if c.metrics != nil {
+						c.metrics.IncClaimSkipped("media", reason)
+					}
+					log.Info("skipping delivery; recording claimed by another worker",
+						"recording_id", evt.RecordingID,
+						"reason", reason,
+					)
+					return nil
+				}
+				if hErr != nil {
+					span.RecordError(hErr)
+					span.SetStatus(codes.Error, hErr.Error())
+					span.End()
+					if c.metrics != nil {
+						c.metrics.ObservePipeline("media", hErr, time.Since(start))
+					}
+					return hErr
+				}
+				span.End()
+				if c.metrics != nil {
+					c.metrics.ObservePipeline("media", nil, time.Since(start))
+				}
+				return nil
+			},
+			c.deadLetter,
+			log,
 		)
-		err = c.svc.HandleUploaded(spanCtx, evt)
 		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-			span.End()
-			if c.metrics != nil {
-				c.metrics.ObservePipeline("media", err, time.Since(start))
+			if ctx.Err() != nil {
+				return nil
 			}
-			log.Error("media handling failed", "error", err, "recording_id", evt.RecordingID)
-			time.Sleep(time.Second)
-			continue
-		}
-		span.End()
-		if c.metrics != nil {
-			c.metrics.ObservePipeline("media", nil, time.Since(start))
-		}
-
-		if err := c.reader.CommitMessages(ctx, msg); err != nil {
 			return err
 		}
 	}
 }
 
+func claimSkipReason(err error) string {
+	if errors.Is(err, domain.ErrClaimLost) {
+		return "lost"
+	}
+	return "held"
+}
+
+func (c *Consumer) deadLetter(ctx context.Context, msg kafkago.Message, attempts int, cause error) error {
+	if err := pkafka.PublishDeadLetter(ctx, c.pub, msg, attempts, cause); err != nil {
+		return fmt.Errorf("publish dlq: %w", err)
+	}
+	if c.metrics != nil {
+		c.metrics.IncDLQ(msg.Topic)
+	}
+	c.log.Warn("message dead-lettered",
+		"topic", msg.Topic,
+		"partition", msg.Partition,
+		"offset", msg.Offset,
+		"attempts", attempts,
+		"error", cause,
+	)
+	c.attempts.Clear(msg.Topic, msg.Partition, msg.Offset)
+	return c.reader.CommitMessages(ctx, msg)
+}
+
 func (c *Consumer) Close() error {
-	return c.reader.Close()
+	if c.closer != nil {
+		return c.closer()
+	}
+	return nil
 }

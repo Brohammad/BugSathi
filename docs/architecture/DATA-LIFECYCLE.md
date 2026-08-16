@@ -59,6 +59,13 @@ ShareCreated → public GET /s/{token}
 | Thumb | MinIO | `.../thumb.jpg` |
 | Metadata / status | Postgres | `recordings`, `media_artifacts`, `reports`, … |
 
+## Deletion
+
+Owner `DELETE /v1/projects/{id}` cascades Postgres rows, then best-effort
+deletes every object under `projects/{project_id}/` (ADR 0026). There is no
+per-recording delete API yet. Abandoned `UPLOADING` objects for projects that
+still exist are not swept automatically.
+
 ## Who writes what
 
 | Actor | Writes |

@@ -21,3 +21,4 @@ jobs:
         run: |
           go build -o /tmp/api ./cmd/api
           go build -o /tmp/worker ./cmd/worker
+          go build -o /tmp/migrate ./cmd/migrate

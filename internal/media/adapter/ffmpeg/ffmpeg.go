@@ -14,8 +14,8 @@ import (
 )
 
 type Extractor struct {
-	Bin     string
-	FPS     string // e.g. "0.5" => one frame every 2s
+	Bin       string
+	FPS       string // e.g. "0.5" => one frame every 2s
 	MaxFrames int
 }
 

@@ -11,7 +11,19 @@ import (
 var (
 	ErrNotFound = errors.New("recording not found")
 	ErrConflict = errors.New("recording not in expected state")
+	// ErrClaimHeld means another worker holds a live processing lease, so this
+	// delivery must not run ffmpeg again.
+	ErrClaimHeld = errors.New("recording claimed by another worker")
+	// ErrClaimLost means our lease expired or was taken over mid-job, so the
+	// work we just did must not be committed.
+	ErrClaimLost = errors.New("processing claim lost")
 )
+
+// IsClaimConflict reports whether the error means some other worker owns this
+// recording. Such a delivery is finished from our side: nothing to retry.
+func IsClaimConflict(err error) bool {
+	return errors.Is(err, ErrClaimHeld) || errors.Is(err, ErrClaimLost)
+}
 
 type ArtifactKind string
 

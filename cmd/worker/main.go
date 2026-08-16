@@ -18,6 +18,7 @@ import (
 	aidomain "github.com/Brohammad/BugSathi/internal/ai/domain"
 	"github.com/Brohammad/BugSathi/internal/ai/port"
 	aisvc "github.com/Brohammad/BugSathi/internal/ai/service"
+	collabdomain "github.com/Brohammad/BugSathi/internal/collab/domain"
 	mediaffmpeg "github.com/Brohammad/BugSathi/internal/media/adapter/ffmpeg"
 	mediakafka "github.com/Brohammad/BugSathi/internal/media/adapter/kafka"
 	mediapg "github.com/Brohammad/BugSathi/internal/media/adapter/postgres"
@@ -30,6 +31,8 @@ import (
 	platformkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
+	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
+	sharingdomain "github.com/Brohammad/BugSathi/internal/sharing/domain"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
@@ -60,7 +63,7 @@ func main() {
 	reg := prometheus.NewRegistry()
 	metrics := observability.NewMetrics(reg)
 
-	pool, err := db.Connect(ctx, cfg.Postgres.DSN())
+	pool, err := db.ConnectWithPool(ctx, cfg.Postgres.DSN(), cfg.Postgres)
 	if err != nil {
 		log.Error("postgres connect failed", "error", err)
 		os.Exit(1)
@@ -73,7 +76,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	mediaService := mediasvc.New(mediapg.NewStore(pool), objectStore, mediaffmpeg.New())
+	mediaService := mediasvc.New(mediapg.NewStore(pool), objectStore, mediaffmpeg.New(), mediasvc.ClaimConfig{
+		Owner:         cfg.Media.WorkerID,
+		Lease:         cfg.Media.ClaimLease,
+		RenewInterval: cfg.Media.ClaimRenew,
+	})
+	log.Info("media claim owner", "worker_id", mediaService.Owner(), "lease", cfg.Media.ClaimLease)
 	analyzer := observability.Analyzer{
 		Inner:   newAnalyzer(cfg),
 		Metrics: metrics,
@@ -86,6 +94,10 @@ func main() {
 		mediadomain.TopicFramesExtracted,
 		aidomain.TopicAnalysisCompleted,
 		aidomain.TopicReportGenerated,
+		sharingdomain.TopicShareCreated,
+		collabdomain.TopicCommentCreated,
+		platformkafka.DLQTopic(mediadomain.TopicRecordingUploaded),
+		platformkafka.DLQTopic(mediadomain.TopicFramesExtracted),
 	} {
 		if err := platformkafka.EnsureTopic(cfg.Kafka.Brokers, topic, 3); err != nil {
 			log.Warn("ensure topic", "topic", topic, "error", err)
@@ -98,7 +110,7 @@ func main() {
 	go relay.Run(ctx)
 	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
 
-	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, mediaService, log, metrics)
+	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub)
 	defer mediaConsumer.Close()
 	go func() {
 		if err := mediaConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -107,7 +119,7 @@ func main() {
 		}
 	}()
 
-	aiConsumer := aikafka.NewConsumer(cfg.Kafka, aiService, log, metrics)
+	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics, kafkaPub)
 	defer aiConsumer.Close()
 	go func() {
 		if err := aiConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -129,6 +141,10 @@ func main() {
 		health.WriteReady(w, true, map[string]string{"postgres": "up", "ai_provider": cfg.AI.Provider})
 	})
 	mux.Handle("GET /metrics", observability.Handler(reg))
+	if cfg.Observability.EnablePprof {
+		pprofx.Mount(mux)
+		log.Warn("pprof enabled at /debug/pprof/")
+	}
 
 	server := &http.Server{Addr: addr, Handler: httpx.RequestIDs(observability.Middleware("worker", metrics, mux))}
 	errCh := make(chan error, 1)

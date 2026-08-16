@@ -11,14 +11,22 @@ import (
 )
 
 type Service struct {
-	repo    port.Repository
-	access  port.ProjectAccess
-	signer  port.URLSigner
-	urlTTL  time.Duration
+	repo   port.Repository
+	access port.ProjectAccess
+	signer port.URLSigner
+	urlTTL time.Duration
+	cache  DetailCache
 }
 
-func New(repo port.Repository, access port.ProjectAccess, signer port.URLSigner) *Service {
-	return &Service{repo: repo, access: access, signer: signer, urlTTL: 15 * time.Minute}
+// DetailCache stores report aggregates without presigned URLs.
+type DetailCache interface {
+	Enabled() bool
+	Get(id uuid.UUID) (domain.Detail, bool)
+	Set(id uuid.UUID, d domain.Detail)
+}
+
+func New(repo port.Repository, access port.ProjectAccess, signer port.URLSigner, cache DetailCache) *Service {
+	return &Service{repo: repo, access: access, signer: signer, urlTTL: 15 * time.Minute, cache: cache}
 }
 
 type ReportDTO struct {
@@ -78,9 +86,17 @@ func (s *Service) Get(ctx context.Context, userID, projectID, reportID uuid.UUID
 	if err := s.access.EnsureMember(ctx, userID, projectID); err != nil {
 		return DetailDTO{}, mapAccess(err)
 	}
+	if s.cache != nil && s.cache.Enabled() {
+		if d, ok := s.cache.Get(reportID); ok && d.Report.ProjectID == projectID {
+			return s.withURLs(ctx, d)
+		}
+	}
 	d, err := s.repo.GetByID(ctx, projectID, reportID)
 	if err != nil {
 		return DetailDTO{}, err
+	}
+	if s.cache != nil {
+		s.cache.Set(reportID, d)
 	}
 	return s.withURLs(ctx, d)
 }
@@ -92,6 +108,9 @@ func (s *Service) GetByRecording(ctx context.Context, userID, projectID, recordi
 	d, err := s.repo.GetByRecordingID(ctx, projectID, recordingID)
 	if err != nil {
 		return DetailDTO{}, err
+	}
+	if s.cache != nil {
+		s.cache.Set(d.Report.ID, d)
 	}
 	return s.withURLs(ctx, d)
 }

@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: bugsathi-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8080"]
+        labels:
+          service: api
+
+  - job_name: bugsathi-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["worker:8081"]
+        labels:
+          service: worker
