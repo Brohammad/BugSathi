@@ -17,11 +17,15 @@ After frames exist, we need a bug title, summary, and reproduction steps. Provid
 5. Idempotent on `(recording_id, prompt_version)` — skip LLM if analysis already `completed`.
 6. Upsert `reports` to `READY` with title/summary/steps; outbox `AnalysisCompleted` + `ReportGenerated`.
 7. Timeouts via context (default 60s); max keyframes sent to provider (default 5).
+8. **OpenAI adapter (MVP)** — sends frame object keys and metadata as **text** in the
+   chat prompt, not image bytes. True multimodal is deferred; mock remains default
+   for CI. Results are validated (`title`, `summary`, ≥1 step) before persist (ADR 0030).
+9. Idempotent replay re-emits outbox with the **existing** `report_id`, not a new UUID.
 
 ## Consequences
 
 **Positive** — offline-first DX; vendor swap by config.  
-**Negative** — mock quality ≠ production LLM; multimodal depends on provider.
+**Negative** — mock quality ≠ production LLM; OpenAI path is text-context only until multimodal lands.
 
 ## Alternatives
 

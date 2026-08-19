@@ -18,6 +18,7 @@ type Store interface {
 	UpsertRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at time.Time) (domain.Analysis, error)
 	CompleteAnalysis(ctx context.Context, analysis domain.Analysis, report domain.Report, events []OutboxEvent, at time.Time) error
 	FailAnalysis(ctx context.Context, recordingID uuid.UUID, promptVersion, msg string, at time.Time) error
+	GetReportByRecording(ctx context.Context, recordingID uuid.UUID) (domain.Report, error)
 	GetRecordingMeta(ctx context.Context, recordingID uuid.UUID) (projectID uuid.UUID, metadata json.RawMessage, err error)
 }
 

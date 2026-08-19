@@ -67,6 +67,11 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		_ = s.store.FailAnalysis(ctx, recordingID, domain.PromptVersion, err.Error(), s.now())
 		return err
 	}
+	result = domain.NormalizeAnalysisResult(result)
+	if err := domain.ValidateAnalysisResult(result); err != nil {
+		_ = s.store.FailAnalysis(ctx, recordingID, domain.PromptVersion, err.Error(), s.now())
+		return err
+	}
 
 	stepsJSON, err := json.Marshal(result.Steps)
 	if err != nil {
@@ -87,41 +92,29 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		PromptVersion: domain.PromptVersion, CreatedAt: now, UpdatedAt: now,
 	}
 
-	corr := evt.CorrelationID
-	completedPayload, _ := json.Marshal(domain.AnalysisCompletedEvent{
-		SchemaVersion: 1, RecordingID: evt.RecordingID, ReportID: report.ID.String(),
-		PromptVersion: domain.PromptVersion, CorrelationID: corr, OccurredAt: now.UTC(),
-	})
-	reportPayload, _ := json.Marshal(domain.ReportGeneratedEvent{
-		SchemaVersion: 1, ReportID: report.ID.String(), RecordingID: evt.RecordingID,
-		ProjectID: evt.ProjectID, CorrelationID: corr, OccurredAt: now.UTC(),
-	})
-
-	return s.store.CompleteAnalysis(ctx, analysis, report, []port.OutboxEvent{
-		{Topic: domain.TopicAnalysisCompleted, PartitionKey: evt.RecordingID, Payload: completedPayload, CorrelationID: corr},
-		{Topic: domain.TopicReportGenerated, PartitionKey: evt.RecordingID, Payload: reportPayload, CorrelationID: corr},
-	}, now)
+	return s.store.CompleteAnalysis(ctx, analysis, report, s.buildOutboxEvents(report, evt.RecordingID, evt.ProjectID, evt.CorrelationID, now), now)
 }
 
 func (s *Service) emitCompletedEvents(ctx context.Context, existing domain.Analysis, corr string) error {
-	// Ensure downstream events exist again (at-least-once friendly).
-	now := s.now()
-	report := domain.Report{
-		ID: uuid.New(), RecordingID: existing.RecordingID, ProjectID: existing.ProjectID,
-		Status: domain.ReportReady, Title: existing.Title, Summary: existing.Summary,
-		Steps: existing.Steps, AIStatus: string(domain.AnalysisCompleted),
-		PromptVersion: existing.PromptVersion, CreatedAt: now, UpdatedAt: now,
+	report, err := s.store.GetReportByRecording(ctx, existing.RecordingID)
+	if err != nil {
+		return err
 	}
+	now := s.now()
+	return s.store.CompleteAnalysis(ctx, existing, report, s.buildOutboxEvents(report, existing.RecordingID.String(), existing.ProjectID.String(), corr, now), now)
+}
+
+func (s *Service) buildOutboxEvents(report domain.Report, recordingID, projectID, corr string, at time.Time) []port.OutboxEvent {
 	completedPayload, _ := json.Marshal(domain.AnalysisCompletedEvent{
-		SchemaVersion: 1, RecordingID: existing.RecordingID.String(), ReportID: report.ID.String(),
-		PromptVersion: existing.PromptVersion, CorrelationID: corr, OccurredAt: now.UTC(),
+		SchemaVersion: 1, RecordingID: recordingID, ReportID: report.ID.String(),
+		PromptVersion: domain.PromptVersion, CorrelationID: corr, OccurredAt: at.UTC(),
 	})
 	reportPayload, _ := json.Marshal(domain.ReportGeneratedEvent{
-		SchemaVersion: 1, ReportID: report.ID.String(), RecordingID: existing.RecordingID.String(),
-		ProjectID: existing.ProjectID.String(), CorrelationID: corr, OccurredAt: now.UTC(),
+		SchemaVersion: 1, ReportID: report.ID.String(), RecordingID: recordingID,
+		ProjectID: projectID, CorrelationID: corr, OccurredAt: at.UTC(),
 	})
-	return s.store.CompleteAnalysis(ctx, existing, report, []port.OutboxEvent{
-		{Topic: domain.TopicAnalysisCompleted, PartitionKey: existing.RecordingID.String(), Payload: completedPayload, CorrelationID: corr},
-		{Topic: domain.TopicReportGenerated, PartitionKey: existing.RecordingID.String(), Payload: reportPayload, CorrelationID: corr},
-	}, now)
+	return []port.OutboxEvent{
+		{Topic: domain.TopicAnalysisCompleted, PartitionKey: recordingID, Payload: completedPayload, CorrelationID: corr},
+		{Topic: domain.TopicReportGenerated, PartitionKey: recordingID, Payload: reportPayload, CorrelationID: corr},
+	}
 }

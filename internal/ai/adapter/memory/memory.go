@@ -77,9 +77,23 @@ func (s *Store) UpsertRunning(_ context.Context, recordingID, projectID uuid.UUI
 	return a, nil
 }
 
+func (s *Store) GetReportByRecording(_ context.Context, recordingID uuid.UUID) (domain.Report, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r, ok := s.reports[recordingID]
+	if !ok {
+		return domain.Report{}, domain.ErrNotFound
+	}
+	return r, nil
+}
+
 func (s *Store) CompleteAnalysis(_ context.Context, analysis domain.Analysis, report domain.Report, events []port.OutboxEvent, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if existing, ok := s.reports[report.RecordingID]; ok {
+		report.ID = existing.ID
+		report.CreatedAt = existing.CreatedAt
+	}
 	analysis.Status = domain.AnalysisCompleted
 	analysis.UpdatedAt = at
 	s.analyses[key(analysis.RecordingID, analysis.PromptVersion)] = analysis
