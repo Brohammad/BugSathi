@@ -19,6 +19,9 @@ type RefreshTokenRepository interface {
 	FindByHash(ctx context.Context, hash string) (domain.RefreshToken, error)
 	Revoke(ctx context.Context, id uuid.UUID, at time.Time) error
 	RevokeAllForUser(ctx context.Context, userID uuid.UUID, at time.Time) error
+	// Rotate atomically revokes the active token identified by hash and inserts replacement.
+	// Returns the consumed token on success; ErrUnauthorized when missing, expired, or already redeemed.
+	Rotate(ctx context.Context, hash string, at time.Time, replacement domain.RefreshToken) (domain.RefreshToken, error)
 }
 
 type PasswordHasher interface {

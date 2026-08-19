@@ -116,18 +116,39 @@ func (s *Service) Login(ctx context.Context, email, password string) (UserDTO, T
 }
 
 func (s *Service) Refresh(ctx context.Context, rawRefresh string) (TokenPair, error) {
-	rec, err := s.lookupRefresh(ctx, rawRefresh)
+	if rawRefresh == "" {
+		return TokenPair{}, domain.ErrUnauthorized
+	}
+	rawNew, err := newOpaqueToken()
 	if err != nil {
 		return TokenPair{}, err
 	}
-	if err := s.refresh.Revoke(ctx, rec.ID, s.now()); err != nil {
+	now := s.now()
+	exp := now.Add(s.refreshTTL)
+	consumed, err := s.refresh.Rotate(ctx, hashToken(rawRefresh), now, domain.RefreshToken{
+		ID:        uuid.New(),
+		TokenHash: hashToken(rawNew),
+		ExpiresAt: exp,
+		CreatedAt: now,
+	})
+	if err != nil {
 		return TokenPair{}, err
 	}
-	user, err := s.users.FindByID(ctx, rec.UserID)
+	user, err := s.users.FindByID(ctx, consumed.UserID)
 	if err != nil {
 		return TokenPair{}, domain.ErrUnauthorized
 	}
-	return s.issuePair(ctx, user)
+	access, accessExp, err := s.tokens.IssueAccessToken(user.ID, user.Email)
+	if err != nil {
+		return TokenPair{}, err
+	}
+	return TokenPair{
+		AccessToken:      access,
+		AccessExpiresAt:  accessExp,
+		RefreshToken:     rawNew,
+		RefreshExpiresAt: exp,
+		TokenType:        "Bearer",
+	}, nil
 }
 
 func (s *Service) Logout(ctx context.Context, rawRefresh string) error {
@@ -136,7 +157,13 @@ func (s *Service) Logout(ctx context.Context, rawRefresh string) error {
 		// Idempotent logout: already invalid is OK.
 		return nil
 	}
-	return s.refresh.Revoke(ctx, rec.ID, s.now())
+	if err := s.refresh.Revoke(ctx, rec.ID, s.now()); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) Me(ctx context.Context, userID uuid.UUID) (UserDTO, error) {

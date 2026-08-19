@@ -58,3 +58,45 @@ func TestAuthHTTPFlow(t *testing.T) {
 		t.Fatalf("expected 401, got %d", badRR.Code)
 	}
 }
+
+func TestRefreshReuseHTTP401(t *testing.T) {
+	tm, err := jwtmgr.New("0123456789abcdef0123456789abcdef", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := service.New(memory.NewUserRepo(), memory.NewRefreshRepo(), password.NewArgon2id(), tm, time.Hour)
+	h := httpapi.NewHandler(svc)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	regBody := []byte(`{"email":"r@example.com","password":"password123","name":"R"}`)
+	regReq := httptest.NewRequest(http.MethodPost, "/v1/auth/register", bytes.NewReader(regBody))
+	regRR := httptest.NewRecorder()
+	mux.ServeHTTP(regRR, regReq)
+	if regRR.Code != http.StatusCreated {
+		t.Fatalf("register status=%d", regRR.Code)
+	}
+	var reg struct {
+		Tokens struct {
+			RefreshToken string `json:"refresh_token"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(regRR.Body.Bytes(), &reg); err != nil {
+		t.Fatal(err)
+	}
+
+	refreshBody, _ := json.Marshal(map[string]string{"refresh_token": reg.Tokens.RefreshToken})
+	first := httptest.NewRequest(http.MethodPost, "/v1/auth/refresh", bytes.NewReader(refreshBody))
+	firstRR := httptest.NewRecorder()
+	mux.ServeHTTP(firstRR, first)
+	if firstRR.Code != http.StatusOK {
+		t.Fatalf("first refresh status=%d body=%s", firstRR.Code, firstRR.Body.String())
+	}
+
+	second := httptest.NewRequest(http.MethodPost, "/v1/auth/refresh", bytes.NewReader(refreshBody))
+	secondRR := httptest.NewRecorder()
+	mux.ServeHTTP(secondRR, second)
+	if secondRR.Code != http.StatusUnauthorized {
+		t.Fatalf("reuse refresh status=%d want 401 body=%s", secondRR.Code, secondRR.Body.String())
+	}
+}

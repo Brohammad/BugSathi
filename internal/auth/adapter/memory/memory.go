@@ -84,11 +84,33 @@ func (r *RefreshRepo) FindByHash(_ context.Context, hash string) (domain.Refresh
 	return r.byID[id], nil
 }
 
+func (r *RefreshRepo) Rotate(_ context.Context, hash string, at time.Time, replacement domain.RefreshToken) (domain.RefreshToken, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	id, ok := r.hash[hash]
+	if !ok {
+		return domain.RefreshToken{}, domain.ErrUnauthorized
+	}
+	consumed := r.byID[id]
+	if !consumed.Active(at) {
+		return domain.RefreshToken{}, domain.ErrUnauthorized
+	}
+	consumed.RevokedAt = &at
+	r.byID[id] = consumed
+	replacement.UserID = consumed.UserID
+	r.byID[replacement.ID] = replacement
+	r.hash[replacement.TokenHash] = replacement.ID
+	return consumed, nil
+}
+
 func (r *RefreshRepo) Revoke(_ context.Context, id uuid.UUID, at time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	t, ok := r.byID[id]
 	if !ok {
+		return domain.ErrNotFound
+	}
+	if t.RevokedAt != nil {
 		return domain.ErrNotFound
 	}
 	t.RevokedAt = &at

@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -79,6 +80,61 @@ func TestRegisterLoginMeRefreshLogout(t *testing.T) {
 	}
 	if _, err := svc.Refresh(ctx, rotated.RefreshToken); err != domain.ErrUnauthorized {
 		t.Fatalf("after logout: %v", err)
+	}
+}
+
+func TestRefreshReuseReturnsUnauthorized(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	_, pair, err := svc.Register(ctx, "reuse@example.com", "password123", "Reuse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Refresh(ctx, pair.RefreshToken); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Refresh(ctx, pair.RefreshToken); err != domain.ErrUnauthorized {
+		t.Fatalf("reuse: got %v", err)
+	}
+}
+
+func TestRefreshConcurrentRace(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+	_, pair, err := svc.Register(ctx, "race@example.com", "password123", "Race")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		tokens service.TokenPair
+		err    error
+	}
+	ch := make(chan result, 2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			tokens, err := svc.Refresh(ctx, pair.RefreshToken)
+			ch <- result{tokens, err}
+		}()
+	}
+
+	var ok, denied int
+	for i := 0; i < 2; i++ {
+		r := <-ch
+		switch {
+		case r.err == nil:
+			ok++
+			if r.tokens.RefreshToken == "" {
+				t.Fatal("expected refresh token")
+			}
+		case errors.Is(r.err, domain.ErrUnauthorized):
+			denied++
+		default:
+			t.Fatalf("unexpected err: %v", r.err)
+		}
+	}
+	if ok != 1 || denied != 1 {
+		t.Fatalf("ok=%d denied=%d", ok, denied)
 	}
 }
 

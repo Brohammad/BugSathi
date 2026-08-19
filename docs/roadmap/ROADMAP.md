@@ -139,6 +139,11 @@
 - Keyset pagination on projects, reports, shares, comments, members
 - ADR 0028
 
+### M23 — Atomic auth refresh rotation
+- `Rotate` revokes + inserts in one DB transaction
+- Reuse/race on refresh maps to HTTP 401 (not 404/500)
+- ADR 0029
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
