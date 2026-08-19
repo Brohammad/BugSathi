@@ -144,6 +144,16 @@
 - Reuse/race on refresh maps to HTTP 401 (not 404/500)
 - ADR 0029
 
+### M24 — AI result validation & report_id replay fix
+- Validate LLM title/summary/steps before persist
+- Idempotent replay emits existing `report_id` in outbox events
+- Document text-only OpenAI context (not image bytes); ADR 0030
+
+### M25 — Optional Redis for multi-replica API
+- `REDIS_URL` enables shared SSE pub/sub, rate limits, report cache
+- Default off for local single-replica dev; Compose includes Redis service
+- ADR 0031
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |

@@ -19,6 +19,7 @@ import (
 	collabhub "github.com/Brohammad/BugSathi/internal/collab/adapter/hub"
 	collabpg "github.com/Brohammad/BugSathi/internal/collab/adapter/postgres"
 	collabdomain "github.com/Brohammad/BugSathi/internal/collab/domain"
+	collabport "github.com/Brohammad/BugSathi/internal/collab/port"
 	collabsvc "github.com/Brohammad/BugSathi/internal/collab/service"
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/platform/db"
@@ -28,6 +29,7 @@ import (
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
+	platformredis "github.com/Brohammad/BugSathi/internal/platform/redis"
 	projecthttp "github.com/Brohammad/BugSathi/internal/projects/adapter/httpapi"
 	projectpg "github.com/Brohammad/BugSathi/internal/projects/adapter/postgres"
 	projectsvc "github.com/Brohammad/BugSathi/internal/projects/service"
@@ -82,6 +84,17 @@ func main() {
 	}
 	defer pool.Close()
 
+	var redisClient *platformredis.Client
+	if cfg.Redis.Enabled() {
+		redisClient, err = platformredis.New(cfg.Redis.URL)
+		if err != nil {
+			log.Error("redis connect failed", "error", err)
+			os.Exit(1)
+		}
+		defer redisClient.Close()
+		log.Info("redis enabled for multi-replica SSE, rate limits, and report cache")
+	}
+
 	tokenMgr, err := jwtmgr.New(cfg.Auth.JWTSecret, cfg.Auth.AccessTokenTTL)
 	if err != nil {
 		log.Error("jwt manager failed", "error", err)
@@ -117,11 +130,16 @@ func main() {
 	)
 	uploadHandler := uploadhttp.NewHandler(uploadService)
 
+	var reportDetailCache reportsvc.DetailCache = reportcache.NewReportCache(cfg.Cache.ReportTTL)
+	if redisClient != nil && cfg.Cache.ReportTTL > 0 {
+		reportDetailCache = reportcache.NewRedisReportCache(redisClient.Raw(), cfg.Cache.ReportTTL)
+	}
+
 	reportService := reportsvc.New(
 		reportpg.NewRepo(pool),
 		uploadaccess.New(projectService),
 		objectStore,
-		reportcache.NewReportCache(cfg.Cache.ReportTTL),
+		reportDetailCache,
 		cfg.List,
 	)
 	reportHandler := reporthttp.NewHandler(reportService)
@@ -136,12 +154,20 @@ func main() {
 	)
 	shareHandler := sharehttp.NewHandler(shareService)
 
+	var collabHub collabport.Hub = collabhub.New()
+	var redisHub *collabhub.RedisHub
+	if redisClient != nil {
+		redisHub = collabhub.NewRedis(redisClient.Raw())
+		collabHub = redisHub
+		defer redisHub.Close()
+	}
+
 	collabService := collabsvc.New(
 		collabpg.NewRepo(pool),
 		uploadaccess.New(projectService),
 		collabpg.NewReportGuard(pool),
 		collabpg.NewAuthorLookup(pool),
-		collabhub.New(),
+		collabHub,
 		cfg.List,
 	)
 	collabHandler := collabhttp.NewHandler(collabService)
@@ -177,11 +203,21 @@ func main() {
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		pingCtx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
+		status := map[string]string{"postgres": "up"}
 		if err := pool.Ping(pingCtx); err != nil {
-			health.WriteReady(w, false, map[string]string{"postgres": "down"})
+			status["postgres"] = "down"
+			health.WriteReady(w, false, status)
 			return
 		}
-		health.WriteReady(w, true, map[string]string{"postgres": "up"})
+		if redisClient != nil {
+			if err := redisClient.Ping(pingCtx); err != nil {
+				status["redis"] = "down"
+				health.WriteReady(w, false, status)
+				return
+			}
+			status["redis"] = "up"
+		}
+		health.WriteReady(w, true, status)
 	})
 	mux.Handle("GET /metrics", observability.Handler(reg))
 	if cfg.Observability.EnablePprof {
@@ -195,17 +231,19 @@ func main() {
 	shareHandler.RegisterRoutes(mux, protect)
 	collabHandler.RegisterRoutes(mux, protect)
 
+	core := observability.Middleware("api", metrics, mux)
+	core = httpx.MaxBodyBytes(cfg.Hardening.MaxBodyBytes, core)
+	if redisClient != nil {
+		core = httpx.RateLimitRedis(cfg.Hardening.RateLimit, trusted, metrics, redisClient.Raw(), core)
+	} else {
+		core = httpx.RateLimit(cfg.Hardening.RateLimit, trusted, metrics, core)
+	}
+
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpx.RequestIDs(
 			httpx.CORS(cfg.Hardening.CORSOrigins,
-				httpx.SecurityHeaders(
-					httpx.RateLimit(cfg.Hardening.RateLimit, trusted, metrics,
-						httpx.MaxBodyBytes(cfg.Hardening.MaxBodyBytes,
-							observability.Middleware("api", metrics, mux),
-						),
-					),
-				),
+				httpx.SecurityHeaders(core),
 			),
 		),
 	}
