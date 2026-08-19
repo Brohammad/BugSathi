@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/Brohammad/BugSathi/internal/projects/domain"
-	"github.com/Brohammad/BugSathi/internal/projects/port"
 	"github.com/google/uuid"
 )
 
@@ -38,18 +37,6 @@ func (r *Repo) GetByID(_ context.Context, id uuid.UUID) (domain.Project, error) 
 		return domain.Project{}, domain.ErrNotFound
 	}
 	return p, nil
-}
-
-func (r *Repo) ListForUser(_ context.Context, userID uuid.UUID) ([]port.ProjectWithRole, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var out []port.ProjectWithRole
-	for pid, ms := range r.members {
-		if m, ok := ms[userID]; ok {
-			out = append(out, port.ProjectWithRole{Project: r.projects[pid], Role: m.Role})
-		}
-	}
-	return out, nil
 }
 
 func (r *Repo) Update(_ context.Context, project domain.Project) (domain.Project, error) {
@@ -99,20 +86,6 @@ func (r *Repo) AddMember(_ context.Context, member domain.Member) error {
 	}
 	ms[member.UserID] = member
 	return nil
-}
-
-func (r *Repo) ListMembers(_ context.Context, projectID uuid.UUID) ([]domain.Member, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	ms, ok := r.members[projectID]
-	if !ok {
-		return nil, domain.ErrNotFound
-	}
-	out := make([]domain.Member, 0, len(ms))
-	for _, m := range ms {
-		out = append(out, m)
-	}
-	return out, nil
 }
 
 func (r *Repo) CountOwners(_ context.Context, projectID uuid.UUID) (int, error) {

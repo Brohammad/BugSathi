@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/config"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/collab/adapter/hub"
 	"github.com/Brohammad/BugSathi/internal/collab/adapter/memory"
 	"github.com/Brohammad/BugSathi/internal/collab/domain"
@@ -18,7 +20,7 @@ func TestCommentAndPresenceFanout(t *testing.T) {
 	userID := uuid.New()
 	projectID := uuid.New()
 	reportID := uuid.New()
-	svc := service.New(repo, memory.AccessOK{}, memory.ReportOK{}, memory.Authors{userID: "Dev"}, h)
+	svc := service.New(repo, memory.AccessOK{}, memory.ReportOK{}, memory.Authors{userID: "Dev"}, h, config.ListConfig{})
 
 	ch, unsub, err := svc.Subscribe(context.Background(), userID, projectID, reportID)
 	if err != nil {
@@ -53,14 +55,14 @@ func TestCommentAndPresenceFanout(t *testing.T) {
 		t.Fatal("timeout waiting comment event")
 	}
 
-	list, err := svc.ListComments(context.Background(), userID, projectID, reportID)
-	if err != nil || len(list) != 1 {
+	list, err := svc.ListComments(context.Background(), userID, projectID, reportID, pagination.Page{Limit: 50})
+	if err != nil || len(list.Items) != 1 {
 		t.Fatalf("%v %v", list, err)
 	}
 }
 
 func TestForbidden(t *testing.T) {
-	svc := service.New(memory.NewRepo(), memory.AccessDeny{}, memory.ReportOK{}, memory.Authors{}, hub.New())
+	svc := service.New(memory.NewRepo(), memory.AccessDeny{}, memory.ReportOK{}, memory.Authors{}, hub.New(), config.ListConfig{})
 	_, err := svc.CreateComment(context.Background(), uuid.New(), uuid.New(), uuid.New(), "x")
 	if err != domain.ErrForbidden {
 		t.Fatalf("got %v", err)

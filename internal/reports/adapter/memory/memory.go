@@ -24,18 +24,6 @@ func (r *Repo) Seed(d domain.Detail) {
 	r.reports[d.Report.ID] = d
 }
 
-func (r *Repo) ListByProject(_ context.Context, projectID uuid.UUID) ([]domain.Report, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var out []domain.Report
-	for _, d := range r.reports {
-		if d.Report.ProjectID == projectID {
-			out = append(out, d.Report)
-		}
-	}
-	return out, nil
-}
-
 func (r *Repo) GetByID(_ context.Context, projectID, reportID uuid.UUID) (domain.Detail, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

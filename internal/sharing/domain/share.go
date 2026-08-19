@@ -2,7 +2,9 @@ package domain
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -46,6 +48,12 @@ func NewToken() (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// HashToken fingerprints a raw share token for storage (SHA-256 hex).
+func HashToken(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
 }
 
 type ShareCreatedEvent struct {

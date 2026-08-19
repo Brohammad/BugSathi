@@ -106,7 +106,7 @@ func main() {
 		log.Warn("minio ensure bucket", "error", err)
 	}
 
-	projectService := projectsvc.New(projectpg.NewRepo(pool), objectStore, log)
+	projectService := projectsvc.New(projectpg.NewRepo(pool), objectStore, log, cfg.List)
 	projectHandler := projecthttp.NewHandler(projectService)
 
 	uploadService := uploadsvc.New(
@@ -122,6 +122,7 @@ func main() {
 		uploadaccess.New(projectService),
 		objectStore,
 		reportcache.NewReportCache(cfg.Cache.ReportTTL),
+		cfg.List,
 	)
 	reportHandler := reporthttp.NewHandler(reportService)
 
@@ -130,6 +131,8 @@ func main() {
 		uploadaccess.New(projectService),
 		sharepg.NewReportReader(pool),
 		objectStore,
+		cfg.Sharing,
+		cfg.List,
 	)
 	shareHandler := sharehttp.NewHandler(shareService)
 
@@ -139,6 +142,7 @@ func main() {
 		collabpg.NewReportGuard(pool),
 		collabpg.NewAuthorLookup(pool),
 		collabhub.New(),
+		cfg.List,
 	)
 	collabHandler := collabhttp.NewHandler(collabService)
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/sharing/domain"
 	"github.com/Brohammad/BugSathi/internal/sharing/port"
 	"github.com/google/uuid"
@@ -46,24 +47,52 @@ func (r *Repo) Create(ctx context.Context, link domain.ShareLink, outboxTopic, p
 	return out, nil
 }
 
-func (r *Repo) ListByReport(ctx context.Context, projectID, reportID uuid.UUID) ([]domain.ShareLink, error) {
-	const q = `
-		SELECT id, report_id, project_id, token, expires_at, revoked_at, created_by, created_at
-		FROM share_links WHERE project_id = $1 AND report_id = $2 ORDER BY created_at DESC`
-	rows, err := r.pool.Query(ctx, q, projectID, reportID)
+func (r *Repo) ListByReport(ctx context.Context, projectID, reportID uuid.UUID, page pagination.Page) (pagination.Result[domain.ShareLink], error) {
+	limit := page.Limit + 1
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if page.Cursor == "" {
+		const q = `
+			SELECT id, report_id, project_id, token, expires_at, revoked_at, created_by, created_at
+			FROM share_links
+			WHERE project_id = $1 AND report_id = $2
+			ORDER BY created_at DESC, id DESC
+			LIMIT $3`
+		rows, err = r.pool.Query(ctx, q, projectID, reportID, limit)
+	} else {
+		at, id, err := pagination.DecodeCursor(page.Cursor)
+		if err != nil {
+			return pagination.Result[domain.ShareLink]{}, err
+		}
+		const q = `
+			SELECT id, report_id, project_id, token, expires_at, revoked_at, created_by, created_at
+			FROM share_links
+			WHERE project_id = $1 AND report_id = $2
+			  AND (created_at, id) < ($3, $4)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $5`
+		rows, err = r.pool.Query(ctx, q, projectID, reportID, at, id, limit)
+	}
 	if err != nil {
-		return nil, err
+		return pagination.Result[domain.ShareLink]{}, err
 	}
 	defer rows.Close()
 	var out []domain.ShareLink
 	for rows.Next() {
 		s, err := scanShare(rows)
 		if err != nil {
-			return nil, err
+			return pagination.Result[domain.ShareLink]{}, err
 		}
 		out = append(out, s)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return pagination.Result[domain.ShareLink]{}, err
+	}
+	return pagination.TrimPage(page, out, func(s domain.ShareLink) (time.Time, uuid.UUID) {
+		return s.CreatedAt, s.ID
+	}), nil
 }
 
 func (r *Repo) GetByID(ctx context.Context, projectID, shareID uuid.UUID) (domain.ShareLink, error) {

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/config"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/projects/domain"
 	"github.com/Brohammad/BugSathi/internal/projects/port"
 	"github.com/google/uuid"
@@ -16,14 +18,15 @@ type Service struct {
 	repo    port.Repository
 	objects port.ObjectStore
 	log     *slog.Logger
+	listCfg config.ListConfig
 	now     func() time.Time
 }
 
-func New(repo port.Repository, objects port.ObjectStore, log *slog.Logger) *Service {
+func New(repo port.Repository, objects port.ObjectStore, log *slog.Logger, listCfg config.ListConfig) *Service {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Service{repo: repo, objects: objects, log: log, now: time.Now}
+	return &Service{repo: repo, objects: objects, log: log, listCfg: listCfg, now: time.Now}
 }
 
 type ProjectDTO struct {
@@ -66,16 +69,20 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, name string) (Pr
 	return toDTO(created, domain.RoleOwner), nil
 }
 
-func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]ProjectDTO, error) {
-	rows, err := s.repo.ListForUser(ctx, userID)
+func (s *Service) List(ctx context.Context, userID uuid.UUID, page pagination.Page) (pagination.Result[ProjectDTO], error) {
+	rows, err := s.repo.ListForUser(ctx, userID, page)
 	if err != nil {
-		return nil, err
+		return pagination.Result[ProjectDTO]{}, err
 	}
-	out := make([]ProjectDTO, 0, len(rows))
-	for _, r := range rows {
+	out := make([]ProjectDTO, 0, len(rows.Items))
+	for _, r := range rows.Items {
 		out = append(out, toDTO(r.Project, r.Role))
 	}
-	return out, nil
+	return pagination.Result[ProjectDTO]{Items: out, NextCursor: rows.NextCursor}, nil
+}
+
+func (s *Service) ListLimits() pagination.Limits {
+	return pagination.Limits{Default: s.listCfg.DefaultLimit, Max: s.listCfg.MaxLimit}
 }
 
 func (s *Service) Get(ctx context.Context, userID, projectID uuid.UUID) (ProjectDTO, error) {
@@ -157,19 +164,19 @@ func (s *Service) AddMember(ctx context.Context, actorID, projectID, memberUserI
 	return MemberDTO{UserID: m.UserID, Role: m.Role, CreatedAt: m.CreatedAt}, nil
 }
 
-func (s *Service) ListMembers(ctx context.Context, userID, projectID uuid.UUID) ([]MemberDTO, error) {
+func (s *Service) ListMembers(ctx context.Context, userID, projectID uuid.UUID, page pagination.Page) (pagination.Result[MemberDTO], error) {
 	if _, err := s.requireMember(ctx, projectID, userID); err != nil {
-		return nil, err
+		return pagination.Result[MemberDTO]{}, err
 	}
-	members, err := s.repo.ListMembers(ctx, projectID)
+	members, err := s.repo.ListMembers(ctx, projectID, page)
 	if err != nil {
-		return nil, err
+		return pagination.Result[MemberDTO]{}, err
 	}
-	out := make([]MemberDTO, 0, len(members))
-	for _, m := range members {
+	out := make([]MemberDTO, 0, len(members.Items))
+	for _, m := range members.Items {
 		out = append(out, MemberDTO{UserID: m.UserID, Role: m.Role, CreatedAt: m.CreatedAt})
 	}
-	return out, nil
+	return pagination.Result[MemberDTO]{Items: out, NextCursor: members.NextCursor}, nil
 }
 
 // EnsureMember is used by other contexts (e.g. uploads) for authorization.

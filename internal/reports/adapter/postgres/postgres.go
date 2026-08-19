@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/reports/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -19,24 +21,48 @@ func NewRepo(pool *pgxpool.Pool) *Repo {
 	return &Repo{pool: pool}
 }
 
-func (r *Repo) ListByProject(ctx context.Context, projectID uuid.UUID) ([]domain.Report, error) {
-	const q = `
-		SELECT id, recording_id, project_id, status, title, summary, steps, ai_status, prompt_version, created_at, updated_at
-		FROM reports WHERE project_id = $1 ORDER BY created_at DESC`
-	rows, err := r.pool.Query(ctx, q, projectID)
+func (r *Repo) ListByProject(ctx context.Context, projectID uuid.UUID, page pagination.Page) (pagination.Result[domain.Report], error) {
+	limit := page.Limit + 1
+	var rows pgx.Rows
+	var err error
+	if page.Cursor == "" {
+		const q = `
+			SELECT id, recording_id, project_id, status, title, summary, steps, ai_status, prompt_version, created_at, updated_at
+			FROM reports WHERE project_id = $1
+			ORDER BY created_at DESC, id DESC
+			LIMIT $2`
+		rows, err = r.pool.Query(ctx, q, projectID, limit)
+	} else {
+		at, id, err := pagination.DecodeCursor(page.Cursor)
+		if err != nil {
+			return pagination.Result[domain.Report]{}, err
+		}
+		const q = `
+			SELECT id, recording_id, project_id, status, title, summary, steps, ai_status, prompt_version, created_at, updated_at
+			FROM reports WHERE project_id = $1
+			  AND (created_at, id) < ($2, $3)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $4`
+		rows, err = r.pool.Query(ctx, q, projectID, at, id, limit)
+	}
 	if err != nil {
-		return nil, err
+		return pagination.Result[domain.Report]{}, err
 	}
 	defer rows.Close()
 	var out []domain.Report
 	for rows.Next() {
 		rep, err := scanReport(rows)
 		if err != nil {
-			return nil, err
+			return pagination.Result[domain.Report]{}, err
 		}
 		out = append(out, rep)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return pagination.Result[domain.Report]{}, err
+	}
+	return pagination.TrimPage(page, out, func(rep domain.Report) (time.Time, uuid.UUID) {
+		return rep.CreatedAt, rep.ID
+	}), nil
 }
 
 func (r *Repo) GetByID(ctx context.Context, projectID, reportID uuid.UUID) (domain.Detail, error) {

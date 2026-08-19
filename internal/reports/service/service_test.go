@@ -7,6 +7,8 @@ import (
 	"time"
 
 	reportcache "github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
+	"github.com/Brohammad/BugSathi/internal/platform/config"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/reports/adapter/memory"
 	"github.com/Brohammad/BugSathi/internal/reports/domain"
 	"github.com/Brohammad/BugSathi/internal/reports/service"
@@ -15,7 +17,7 @@ import (
 
 func TestListAndGetReport(t *testing.T) {
 	repo := memory.NewRepo()
-	svc := service.New(repo, memory.AccessOK{}, memory.Signer{}, nil)
+	svc := service.New(repo, memory.AccessOK{}, memory.Signer{}, nil, config.ListConfig{})
 
 	projectID := uuid.New()
 	userID := uuid.New()
@@ -35,8 +37,8 @@ func TestListAndGetReport(t *testing.T) {
 		ThumbURL: "projects/p/recordings/r/thumb.jpg",
 	})
 
-	list, err := svc.List(context.Background(), userID, projectID)
-	if err != nil || len(list) != 1 {
+	list, err := svc.List(context.Background(), userID, projectID, pagination.Page{Limit: 50})
+	if err != nil || len(list.Items) != 1 {
 		t.Fatalf("list=%v err=%v", list, err)
 	}
 
@@ -56,8 +58,8 @@ func TestListAndGetReport(t *testing.T) {
 		t.Fatalf("%+v %v", byRec, err)
 	}
 
-	deny := service.New(repo, memory.AccessDeny{}, memory.Signer{}, nil)
-	if _, err := deny.List(context.Background(), userID, projectID); err != domain.ErrForbidden {
+	deny := service.New(repo, memory.AccessDeny{}, memory.Signer{}, nil, config.ListConfig{})
+	if _, err := deny.List(context.Background(), userID, projectID, pagination.Page{Limit: 50}); err != domain.ErrForbidden {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -65,7 +67,7 @@ func TestListAndGetReport(t *testing.T) {
 func TestGetUsesCache(t *testing.T) {
 	repo := memory.NewRepo()
 	c := reportcache.NewReportCache(time.Minute)
-	svc := service.New(repo, memory.AccessOK{}, memory.Signer{}, c)
+	svc := service.New(repo, memory.AccessOK{}, memory.Signer{}, c, config.ListConfig{})
 
 	projectID := uuid.New()
 	userID := uuid.New()

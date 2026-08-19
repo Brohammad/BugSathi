@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/Brohammad/BugSathi/internal/platform/config"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/projects/adapter/memory"
 	"github.com/Brohammad/BugSathi/internal/projects/domain"
 	"github.com/Brohammad/BugSathi/internal/projects/service"
@@ -14,7 +16,7 @@ import (
 )
 
 func TestProjectLifecycle(t *testing.T) {
-	svc := service.New(memory.NewRepo(), uploadmem.NewStorage(), slog.Default())
+	svc := service.New(memory.NewRepo(), uploadmem.NewStorage(), slog.Default(), config.ListConfig{})
 	ctx := context.Background()
 	owner := uuid.New()
 	member := uuid.New()
@@ -58,8 +60,8 @@ func TestProjectLifecycle(t *testing.T) {
 		t.Fatalf("update: %+v %v", updated, err)
 	}
 
-	list, err := svc.List(ctx, member)
-	if err != nil || len(list) != 1 {
+	list, err := svc.List(ctx, member, pagination.Page{Limit: 50})
+	if err != nil || len(list.Items) != 1 {
 		t.Fatalf("list: %+v %v", list, err)
 	}
 
@@ -74,7 +76,7 @@ func TestProjectLifecycle(t *testing.T) {
 func TestDeleteRemovesProjectObjects(t *testing.T) {
 	repo := memory.NewRepo()
 	objs := uploadmem.NewStorage()
-	svc := service.New(repo, objs, slog.Default())
+	svc := service.New(repo, objs, slog.Default(), config.ListConfig{})
 	ctx := context.Background()
 	owner := uuid.New()
 
@@ -112,7 +114,7 @@ func (failPrefix) DeletePrefix(context.Context, string) error {
 
 func TestDeleteSucceedsWhenObjectCleanupFails(t *testing.T) {
 	repo := memory.NewRepo()
-	svc := service.New(repo, failPrefix{}, slog.Default())
+	svc := service.New(repo, failPrefix{}, slog.Default(), config.ListConfig{})
 	ctx := context.Background()
 	owner := uuid.New()
 	p, err := svc.Create(ctx, owner, "Survive")

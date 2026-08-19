@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	authhttp "github.com/Brohammad/BugSathi/internal/auth/adapter/httpapi"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/projects/domain"
 	"github.com/Brohammad/BugSathi/internal/projects/service"
 	"github.com/google/uuid"
@@ -69,12 +70,17 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	items, err := h.svc.List(r.Context(), uid)
+	page := pagination.Parse(r, h.svc.ListLimits(), pagination.Desc)
+	result, err := h.svc.List(r.Context(), uid, page)
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"projects": items})
+	body := map[string]any{"projects": result.Items}
+	if result.NextCursor != "" {
+		body["next_cursor"] = result.NextCursor
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
@@ -149,12 +155,17 @@ func (h *Handler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid project id")
 		return
 	}
-	members, err := h.svc.ListMembers(r.Context(), uid, pid)
+	page := pagination.Parse(r, h.svc.ListLimits(), pagination.Asc)
+	result, err := h.svc.ListMembers(r.Context(), uid, pid, page)
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"members": members})
+	body := map[string]any{"members": result.Items}
+	if result.NextCursor != "" {
+		body["next_cursor"] = result.NextCursor
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (h *Handler) AddMember(w http.ResponseWriter, r *http.Request) {

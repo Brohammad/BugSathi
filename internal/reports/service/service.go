@@ -5,17 +5,20 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/config"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/reports/domain"
 	"github.com/Brohammad/BugSathi/internal/reports/port"
 	"github.com/google/uuid"
 )
 
 type Service struct {
-	repo   port.Repository
-	access port.ProjectAccess
-	signer port.URLSigner
-	urlTTL time.Duration
-	cache  DetailCache
+	repo    port.Repository
+	access  port.ProjectAccess
+	signer  port.URLSigner
+	urlTTL  time.Duration
+	cache   DetailCache
+	listCfg config.ListConfig
 }
 
 // DetailCache stores report aggregates without presigned URLs.
@@ -25,8 +28,8 @@ type DetailCache interface {
 	Set(id uuid.UUID, d domain.Detail)
 }
 
-func New(repo port.Repository, access port.ProjectAccess, signer port.URLSigner, cache DetailCache) *Service {
-	return &Service{repo: repo, access: access, signer: signer, urlTTL: 15 * time.Minute, cache: cache}
+func New(repo port.Repository, access port.ProjectAccess, signer port.URLSigner, cache DetailCache, listCfg config.ListConfig) *Service {
+	return &Service{repo: repo, access: access, signer: signer, urlTTL: 15 * time.Minute, cache: cache, listCfg: listCfg}
 }
 
 type ReportDTO struct {
@@ -67,19 +70,23 @@ func toReportDTO(r domain.Report) ReportDTO {
 	}
 }
 
-func (s *Service) List(ctx context.Context, userID, projectID uuid.UUID) ([]ReportDTO, error) {
+func (s *Service) List(ctx context.Context, userID, projectID uuid.UUID, page pagination.Page) (pagination.Result[ReportDTO], error) {
 	if err := s.access.EnsureMember(ctx, userID, projectID); err != nil {
-		return nil, mapAccess(err)
+		return pagination.Result[ReportDTO]{}, mapAccess(err)
 	}
-	rows, err := s.repo.ListByProject(ctx, projectID)
+	rows, err := s.repo.ListByProject(ctx, projectID, page)
 	if err != nil {
-		return nil, err
+		return pagination.Result[ReportDTO]{}, err
 	}
-	out := make([]ReportDTO, 0, len(rows))
-	for _, r := range rows {
+	out := make([]ReportDTO, 0, len(rows.Items))
+	for _, r := range rows.Items {
 		out = append(out, toReportDTO(r))
 	}
-	return out, nil
+	return pagination.Result[ReportDTO]{Items: out, NextCursor: rows.NextCursor}, nil
+}
+
+func (s *Service) ListLimits() pagination.Limits {
+	return pagination.Limits{Default: s.listCfg.DefaultLimit, Max: s.listCfg.MaxLimit}
 }
 
 func (s *Service) Get(ctx context.Context, userID, projectID, reportID uuid.UUID) (DetailDTO, error) {

@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/sharing/domain"
 	"github.com/google/uuid"
 )
 
 type Repository interface {
 	Create(ctx context.Context, link domain.ShareLink, outboxTopic, partitionKey string, payload []byte, corr string) (domain.ShareLink, error)
-	ListByReport(ctx context.Context, projectID, reportID uuid.UUID) ([]domain.ShareLink, error)
+	ListByReport(ctx context.Context, projectID, reportID uuid.UUID, page pagination.Page) (pagination.Result[domain.ShareLink], error)
 	GetByID(ctx context.Context, projectID, shareID uuid.UUID) (domain.ShareLink, error)
 	Revoke(ctx context.Context, projectID, shareID uuid.UUID, at time.Time) error
 	GetByToken(ctx context.Context, token string) (domain.ShareLink, error)
