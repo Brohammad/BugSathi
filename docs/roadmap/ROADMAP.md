@@ -128,6 +128,11 @@
 - Abandoned `UPLOADING` GC deferred; no per-recording delete API yet
 - ADR 0026
 
+### M21 — Trusted proxy & production guards
+- `TRUSTED_PROXIES` gates when XFF/X-Real-IP affect rate-limit keys
+- `APP_ENV=production` rejects dev JWT/Postgres/MinIO defaults and pprof
+- ADR 0027
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |

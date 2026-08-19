@@ -193,7 +193,34 @@ func Load() (Config, error) {
 	if len(cfg.Auth.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
+	if err := cfg.validateProduction(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// Known local-dev defaults that must not ship in production.
+const (
+	devJWTSecret        = "dev-only-change-me-32chars-minimum!!"
+	devPostgresPassword = "bugsathi"
+	devMinIOSecretKey   = "bugsathi_secret"
+)
+
+func (c Config) validateProduction() error {
+	if !strings.EqualFold(c.AppEnv, "production") {
+		return nil
+	}
+	switch {
+	case c.Auth.JWTSecret == devJWTSecret:
+		return fmt.Errorf("JWT_SECRET must be changed when APP_ENV=production")
+	case c.Postgres.Password == devPostgresPassword:
+		return fmt.Errorf("POSTGRES_PASSWORD must be changed when APP_ENV=production")
+	case c.MinIO.SecretKey == devMinIOSecretKey:
+		return fmt.Errorf("MINIO_SECRET_KEY must be changed when APP_ENV=production")
+	case c.Observability.EnablePprof:
+		return fmt.Errorf("ENABLE_PPROF must be false when APP_ENV=production")
+	}
+	return nil
 }
 
 func getenv(key, fallback string) string {

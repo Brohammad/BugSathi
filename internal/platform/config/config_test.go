@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("APP_ENV", "")
@@ -34,4 +37,50 @@ func TestLoadDefaults(t *testing.T) {
 	if dsn == "" {
 		t.Fatal("expected DSN")
 	}
+}
+
+func TestProductionRejectsDevSecrets(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("JWT_SECRET", devJWTSecret)
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "JWT_SECRET") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestProductionAcceptsChangedSecrets(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("JWT_SECRET", "prod-secret-that-is-long-enough-32chars!!")
+	t.Setenv("POSTGRES_PASSWORD", "strong-postgres-password")
+	t.Setenv("MINIO_SECRET_KEY", "strong-minio-secret-key")
+	t.Setenv("ENABLE_PPROF", "false")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AppEnv != "production" {
+		t.Fatalf("AppEnv=%q", cfg.AppEnv)
+	}
+}
+
+func TestProductionRejectsPprof(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("JWT_SECRET", "prod-secret-that-is-long-enough-32chars!!")
+	t.Setenv("POSTGRES_PASSWORD", "strong-postgres-password")
+	t.Setenv("MINIO_SECRET_KEY", "strong-minio-secret-key")
+	t.Setenv("ENABLE_PPROF", "true")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "ENABLE_PPROF") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func setProdEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("HTTP_ADDR", ":8080")
+	t.Setenv("JWT_SECRET", "prod-secret-that-is-long-enough-32chars!!")
+	t.Setenv("POSTGRES_PASSWORD", "strong-postgres-password")
+	t.Setenv("MINIO_SECRET_KEY", "strong-minio-secret-key")
+	t.Setenv("ENABLE_PPROF", "false")
 }
