@@ -97,11 +97,12 @@ type HardeningConfig struct {
 }
 
 type RateLimitConfig struct {
-	RPS       float64
-	Burst     int
-	AuthRPS   float64
-	AuthBurst int
-	Window    time.Duration
+	RPS            float64
+	Burst          int
+	AuthRPS        float64
+	AuthBurst      int
+	Window         time.Duration
+	TrustedProxies []string // IPs/CIDRs; X-Forwarded-For honored only from these
 }
 
 func (c RateLimitConfig) Enabled() bool {
@@ -171,11 +172,12 @@ func Load() (Config, error) {
 			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
 			CORSOrigins:  getenvCSV("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
 			RateLimit: RateLimitConfig{
-				RPS:       getenvFloat("RATE_LIMIT_RPS", 20),
-				Burst:     getenvInt("RATE_LIMIT_BURST", 40),
-				AuthRPS:   getenvFloat("AUTH_RATE_LIMIT_RPS", 5),
-				AuthBurst: getenvInt("AUTH_RATE_LIMIT_BURST", 10),
-				Window:    getenvDuration("RATE_LIMIT_WINDOW", time.Minute),
+				RPS:            getenvFloat("RATE_LIMIT_RPS", 20),
+				Burst:          getenvInt("RATE_LIMIT_BURST", 40),
+				AuthRPS:        getenvFloat("AUTH_RATE_LIMIT_RPS", 5),
+				AuthBurst:      getenvInt("AUTH_RATE_LIMIT_BURST", 10),
+				Window:         getenvDuration("RATE_LIMIT_WINDOW", time.Minute),
+				TrustedProxies: getenvCSV("TRUSTED_PROXIES", ""),
 			},
 			KafkaRetry: KafkaRetryConfig{
 				Base:        getenvDuration("KAFKA_RETRY_BASE", time.Second),
@@ -191,7 +193,34 @@ func Load() (Config, error) {
 	if len(cfg.Auth.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
+	if err := cfg.validateProduction(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// Known local-dev defaults that must not ship in production.
+const (
+	devJWTSecret        = "dev-only-change-me-32chars-minimum!!"
+	devPostgresPassword = "bugsathi"
+	devMinIOSecretKey   = "bugsathi_secret"
+)
+
+func (c Config) validateProduction() error {
+	if !strings.EqualFold(c.AppEnv, "production") {
+		return nil
+	}
+	switch {
+	case c.Auth.JWTSecret == devJWTSecret:
+		return fmt.Errorf("JWT_SECRET must be changed when APP_ENV=production")
+	case c.Postgres.Password == devPostgresPassword:
+		return fmt.Errorf("POSTGRES_PASSWORD must be changed when APP_ENV=production")
+	case c.MinIO.SecretKey == devMinIOSecretKey:
+		return fmt.Errorf("MINIO_SECRET_KEY must be changed when APP_ENV=production")
+	case c.Observability.EnablePprof:
+		return fmt.Errorf("ENABLE_PPROF must be false when APP_ENV=production")
+	}
+	return nil
 }
 
 func getenv(key, fallback string) string {

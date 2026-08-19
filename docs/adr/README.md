@@ -28,5 +28,6 @@
 | [0024](0024-web-ui.md) | React + Vite web UI | Accepted |
 | [0025](0025-media-processing-claim.md) | Media processing claim (expiring lease) | Accepted |
 | [0026](0026-object-cleanup-on-delete.md) | Object cleanup on project delete | Accepted |
+| [0027](0027-trusted-proxy-prod-guards.md) | Trusted proxy rate limits + prod secret guards | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

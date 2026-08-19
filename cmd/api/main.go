@@ -142,6 +142,12 @@ func main() {
 	)
 	collabHandler := collabhttp.NewHandler(collabService)
 
+	trusted, err := httpx.ParseTrustedNetworks(cfg.Hardening.RateLimit.TrustedProxies)
+	if err != nil {
+		log.Error("TRUSTED_PROXIES invalid", "error", err)
+		os.Exit(1)
+	}
+
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
 	for _, topic := range []string{
@@ -190,7 +196,7 @@ func main() {
 		Handler: httpx.RequestIDs(
 			httpx.CORS(cfg.Hardening.CORSOrigins,
 				httpx.SecurityHeaders(
-					httpx.RateLimit(cfg.Hardening.RateLimit, metrics,
+					httpx.RateLimit(cfg.Hardening.RateLimit, trusted, metrics,
 						httpx.MaxBodyBytes(cfg.Hardening.MaxBodyBytes,
 							observability.Middleware("api", metrics, mux),
 						),

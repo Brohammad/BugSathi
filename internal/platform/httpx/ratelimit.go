@@ -1,7 +1,6 @@
 package httpx
 
 import (
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,7 +21,9 @@ type limiterEntry struct {
 }
 
 // RateLimit applies per-IP token buckets. Auth routes use the stricter auth limiter.
-func RateLimit(cfg config.RateLimitConfig, metrics rateMetrics, next http.Handler) http.Handler {
+// Forwarding headers are used for the client IP only when the connection comes from
+// a trusted proxy (see TRUSTED_PROXIES).
+func RateLimit(cfg config.RateLimitConfig, trusted []TrustedNetwork, metrics rateMetrics, next http.Handler) http.Handler {
 	if !cfg.Enabled() {
 		return next
 	}
@@ -68,7 +69,7 @@ func RateLimit(cfg config.RateLimitConfig, metrics rateMetrics, next http.Handle
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := clientIP(r)
+		key := ClientIP(r, trusted)
 		authRoute := strings.HasPrefix(r.URL.Path, "/v1/auth/")
 		lim := get(key, authRoute)
 		if !lim.Allow() {
@@ -89,16 +90,4 @@ func RateLimit(cfg config.RateLimitConfig, metrics rateMetrics, next http.Handle
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		return strings.TrimSpace(parts[0])
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
