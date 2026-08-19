@@ -97,11 +97,12 @@ type HardeningConfig struct {
 }
 
 type RateLimitConfig struct {
-	RPS       float64
-	Burst     int
-	AuthRPS   float64
-	AuthBurst int
-	Window    time.Duration
+	RPS            float64
+	Burst          int
+	AuthRPS        float64
+	AuthBurst      int
+	Window         time.Duration
+	TrustedProxies []string // IPs/CIDRs; X-Forwarded-For honored only from these
 }
 
 func (c RateLimitConfig) Enabled() bool {
@@ -171,11 +172,12 @@ func Load() (Config, error) {
 			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
 			CORSOrigins:  getenvCSV("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
 			RateLimit: RateLimitConfig{
-				RPS:       getenvFloat("RATE_LIMIT_RPS", 20),
-				Burst:     getenvInt("RATE_LIMIT_BURST", 40),
-				AuthRPS:   getenvFloat("AUTH_RATE_LIMIT_RPS", 5),
-				AuthBurst: getenvInt("AUTH_RATE_LIMIT_BURST", 10),
-				Window:    getenvDuration("RATE_LIMIT_WINDOW", time.Minute),
+				RPS:            getenvFloat("RATE_LIMIT_RPS", 20),
+				Burst:          getenvInt("RATE_LIMIT_BURST", 40),
+				AuthRPS:        getenvFloat("AUTH_RATE_LIMIT_RPS", 5),
+				AuthBurst:      getenvInt("AUTH_RATE_LIMIT_BURST", 10),
+				Window:         getenvDuration("RATE_LIMIT_WINDOW", time.Minute),
+				TrustedProxies: getenvCSV("TRUSTED_PROXIES", ""),
 			},
 			KafkaRetry: KafkaRetryConfig{
 				Base:        getenvDuration("KAFKA_RETRY_BASE", time.Second),

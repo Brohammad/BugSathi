@@ -43,7 +43,7 @@ func TestCORSRejectsUnknownOrigin(t *testing.T) {
 
 func TestRateLimitRejects(t *testing.T) {
 	cfg := config.RateLimitConfig{RPS: 1, Burst: 1, Window: 60}
-	h := httpx.RateLimit(cfg, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := httpx.RateLimit(cfg, nil, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/v1/projects", nil)
