@@ -22,7 +22,22 @@ type Config struct {
 	Media         MediaConfig
 	Observability ObservabilityConfig
 	Cache         CacheConfig
+	Sharing       SharingConfig
+	List          ListConfig
 	Hardening     HardeningConfig
+}
+
+// SharingConfig controls share-link TTL defaults and token storage.
+type SharingConfig struct {
+	DefaultTTL time.Duration
+	MaxTTL     time.Duration
+	HashTokens bool
+}
+
+// ListConfig caps list endpoint page sizes.
+type ListConfig struct {
+	DefaultLimit int
+	MaxLimit     int
 }
 
 // MediaConfig controls the processing claim that keeps two workers from
@@ -168,6 +183,15 @@ func Load() (Config, error) {
 		Cache: CacheConfig{
 			ReportTTL: getenvDuration("REPORT_CACHE_TTL", 30*time.Second),
 		},
+		Sharing: SharingConfig{
+			DefaultTTL: getenvDuration("SHARE_DEFAULT_TTL", 720*time.Hour),
+			MaxTTL:     getenvDuration("SHARE_MAX_TTL", 2160*time.Hour),
+			HashTokens: getenvBool("SHARE_HASH_TOKENS", true),
+		},
+		List: ListConfig{
+			DefaultLimit: getenvInt("LIST_DEFAULT_LIMIT", 50),
+			MaxLimit:     getenvInt("LIST_MAX_LIMIT", 100),
+		},
 		Hardening: HardeningConfig{
 			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
 			CORSOrigins:  getenvCSV("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
@@ -219,6 +243,8 @@ func (c Config) validateProduction() error {
 		return fmt.Errorf("MINIO_SECRET_KEY must be changed when APP_ENV=production")
 	case c.Observability.EnablePprof:
 		return fmt.Errorf("ENABLE_PPROF must be false when APP_ENV=production")
+	case !c.Sharing.HashTokens:
+		return fmt.Errorf("SHARE_HASH_TOKENS must be true when APP_ENV=production")
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	authhttp "github.com/Brohammad/BugSathi/internal/auth/adapter/httpapi"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/sharing/domain"
 	"github.com/Brohammad/BugSathi/internal/sharing/service"
 	"github.com/google/uuid"
@@ -66,12 +67,17 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid report id")
 		return
 	}
-	items, err := h.svc.List(r.Context(), uid, projectID, reportID)
+	page := pagination.Parse(r, h.svc.ListLimits(), pagination.Desc)
+	result, err := h.svc.List(r.Context(), uid, projectID, reportID, page)
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"shares": items})
+	body := map[string]any{"shares": result.Items}
+	if result.NextCursor != "" {
+		body["next_cursor"] = result.NextCursor
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {

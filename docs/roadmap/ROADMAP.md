@@ -133,6 +133,12 @@
 - `APP_ENV=production` rejects dev JWT/Postgres/MinIO defaults and pprof
 - ADR 0027
 
+### M22 — Share defaults & list pagination
+- `SHARE_DEFAULT_TTL` / `SHARE_MAX_TTL`; reject non-positive expiry
+- `SHARE_HASH_TOKENS` hash-at-rest (required in production); migration `0009`
+- Keyset pagination on projects, reports, shares, comments, members
+- ADR 0028
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |

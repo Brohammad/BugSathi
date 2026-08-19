@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/config"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/collab/domain"
 	"github.com/Brohammad/BugSathi/internal/collab/port"
 	"github.com/google/uuid"
@@ -16,11 +18,12 @@ type Service struct {
 	reports port.ReportGuard
 	authors port.AuthorLookup
 	hub     port.Hub
+	listCfg config.ListConfig
 	now     func() time.Time
 }
 
-func New(repo port.Repository, access port.ProjectAccess, reports port.ReportGuard, authors port.AuthorLookup, hub port.Hub) *Service {
-	return &Service{repo: repo, access: access, reports: reports, authors: authors, hub: hub, now: time.Now}
+func New(repo port.Repository, access port.ProjectAccess, reports port.ReportGuard, authors port.AuthorLookup, hub port.Hub, listCfg config.ListConfig) *Service {
+	return &Service{repo: repo, access: access, reports: reports, authors: authors, hub: hub, listCfg: listCfg, now: time.Now}
 }
 
 type CommentDTO struct {
@@ -73,26 +76,30 @@ func (s *Service) CreateComment(ctx context.Context, userID, projectID, reportID
 	return dto, nil
 }
 
-func (s *Service) ListComments(ctx context.Context, userID, projectID, reportID uuid.UUID) ([]CommentDTO, error) {
+func (s *Service) ListComments(ctx context.Context, userID, projectID, reportID uuid.UUID, page pagination.Page) (pagination.Result[CommentDTO], error) {
 	if err := s.access.EnsureMember(ctx, userID, projectID); err != nil {
-		return nil, domain.ErrForbidden
+		return pagination.Result[CommentDTO]{}, domain.ErrForbidden
 	}
 	if err := s.reports.EnsureInProject(ctx, projectID, reportID); err != nil {
-		return nil, err
+		return pagination.Result[CommentDTO]{}, err
 	}
-	rows, err := s.repo.ListByReport(ctx, projectID, reportID)
+	rows, err := s.repo.ListByReport(ctx, projectID, reportID, page)
 	if err != nil {
-		return nil, err
+		return pagination.Result[CommentDTO]{}, err
 	}
-	out := make([]CommentDTO, 0, len(rows))
-	for _, c := range rows {
+	out := make([]CommentDTO, 0, len(rows.Items))
+	for _, c := range rows.Items {
 		name, _ := s.authors.DisplayName(ctx, c.AuthorID)
 		out = append(out, CommentDTO{
 			ID: c.ID, ReportID: c.ReportID, ProjectID: c.ProjectID,
 			AuthorID: c.AuthorID, AuthorName: name, Body: c.Body, CreatedAt: c.CreatedAt,
 		})
 	}
-	return out, nil
+	return pagination.Result[CommentDTO]{Items: out, NextCursor: rows.NextCursor}, nil
+}
+
+func (s *Service) ListLimits() pagination.Limits {
+	return pagination.Limits{Default: s.listCfg.DefaultLimit, Max: s.listCfg.MaxLimit}
 }
 
 // Subscribe opens an SSE channel after authz. Caller must invoke unsubscribe.

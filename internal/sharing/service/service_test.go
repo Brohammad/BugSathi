@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/sharing/adapter/memory"
 	"github.com/Brohammad/BugSathi/internal/sharing/domain"
 	"github.com/Brohammad/BugSathi/internal/sharing/port"
@@ -24,7 +25,7 @@ func TestShareCreatePublicRevoke(t *testing.T) {
 		Frames:   []port.PublicFrame{{Ordinal: 0, StorageKey: "f.jpg", ContentType: "image/jpeg"}},
 		ThumbKey: "t.jpg",
 	})
-	svc := service.New(repo, memory.AccessOK{}, reports, memory.Signer{})
+	svc := service.New(repo, memory.AccessOK{}, reports, memory.Signer{}, config.SharingConfig{HashTokens: true}, config.ListConfig{})
 
 	exp := 3600 * time.Second
 	share, err := svc.Create(context.Background(), userID, projectID, reportID, &exp)
@@ -45,5 +46,36 @@ func TestShareCreatePublicRevoke(t *testing.T) {
 	}
 	if _, err := svc.PublicGet(context.Background(), share.Token); err != domain.ErrShareInactive {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestShareDefaultTTLAndRejectNeverExpire(t *testing.T) {
+	repo := memory.NewRepo()
+	projectID := uuid.New()
+	reportID := uuid.New()
+	userID := uuid.New()
+	reports := memory.NewReports(port.PublicReport{
+		ReportID: reportID, ProjectID: projectID, Status: "READY",
+		Title: "Bug", Summary: "Sum", Steps: json.RawMessage(`[]`),
+	})
+	svc := service.New(repo, memory.AccessOK{}, reports, memory.Signer{}, config.SharingConfig{
+		DefaultTTL: 24 * time.Hour, MaxTTL: 48 * time.Hour, HashTokens: true,
+	}, config.ListConfig{})
+
+	share, err := svc.Create(context.Background(), userID, projectID, reportID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if share.ExpiresAt == nil {
+		t.Fatal("expected default expiry")
+	}
+
+	zero := time.Duration(0)
+	if _, err := svc.Create(context.Background(), userID, projectID, reportID, &zero); err != domain.ErrInvalidInput {
+		t.Fatalf("zero expiry: got %v", err)
+	}
+	over := 72 * time.Hour
+	if _, err := svc.Create(context.Background(), userID, projectID, reportID, &over); err != domain.ErrInvalidInput {
+		t.Fatalf("over max ttl: got %v", err)
 	}
 }

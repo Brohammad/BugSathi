@@ -28,18 +28,6 @@ func (r *Repo) Create(_ context.Context, link domain.ShareLink, _, _ string, _ [
 	return link, nil
 }
 
-func (r *Repo) ListByReport(_ context.Context, projectID, reportID uuid.UUID) ([]domain.ShareLink, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var out []domain.ShareLink
-	for _, s := range r.byID {
-		if s.ProjectID == projectID && s.ReportID == reportID {
-			out = append(out, s)
-		}
-	}
-	return out, nil
-}
-
 func (r *Repo) GetByID(_ context.Context, projectID, shareID uuid.UUID) (domain.ShareLink, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -5,23 +5,28 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/config"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/sharing/domain"
 	"github.com/Brohammad/BugSathi/internal/sharing/port"
 	"github.com/google/uuid"
 )
 
 type Service struct {
-	repo    port.Repository
-	access  port.ProjectAccess
-	reports port.ReportReader
-	signer  port.URLSigner
-	urlTTL  time.Duration
-	now     func() time.Time
+	repo     port.Repository
+	access   port.ProjectAccess
+	reports  port.ReportReader
+	signer   port.URLSigner
+	shareCfg config.SharingConfig
+	listCfg  config.ListConfig
+	urlTTL   time.Duration
+	now      func() time.Time
 }
 
-func New(repo port.Repository, access port.ProjectAccess, reports port.ReportReader, signer port.URLSigner) *Service {
+func New(repo port.Repository, access port.ProjectAccess, reports port.ReportReader, signer port.URLSigner, shareCfg config.SharingConfig, listCfg config.ListConfig) *Service {
 	return &Service{
 		repo: repo, access: access, reports: reports, signer: signer,
+		shareCfg: shareCfg, listCfg: listCfg,
 		urlTTL: 15 * time.Minute, now: time.Now,
 	}
 }
@@ -30,8 +35,8 @@ type ShareDTO struct {
 	ID        uuid.UUID  `json:"id"`
 	ReportID  uuid.UUID  `json:"report_id"`
 	ProjectID uuid.UUID  `json:"project_id"`
-	Token     string     `json:"token"`
-	URLPath   string     `json:"url_path"`
+	Token     string     `json:"token,omitempty"`
+	URLPath   string     `json:"url_path,omitempty"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
@@ -52,10 +57,18 @@ type PublicFrame struct {
 	URL         string `json:"url,omitempty"`
 }
 
-func toDTO(s domain.ShareLink) ShareDTO {
+func toCreateDTO(s domain.ShareLink, rawToken string) ShareDTO {
 	return ShareDTO{
-		ID: s.ID, ReportID: s.ReportID, ProjectID: s.ProjectID, Token: s.Token,
-		URLPath: "/s/" + s.Token, ExpiresAt: s.ExpiresAt, RevokedAt: s.RevokedAt, CreatedAt: s.CreatedAt,
+		ID: s.ID, ReportID: s.ReportID, ProjectID: s.ProjectID,
+		Token: rawToken, URLPath: "/s/" + rawToken,
+		ExpiresAt: s.ExpiresAt, RevokedAt: s.RevokedAt, CreatedAt: s.CreatedAt,
+	}
+}
+
+func toListDTO(s domain.ShareLink) ShareDTO {
+	return ShareDTO{
+		ID: s.ID, ReportID: s.ReportID, ProjectID: s.ProjectID,
+		ExpiresAt: s.ExpiresAt, RevokedAt: s.RevokedAt, CreatedAt: s.CreatedAt,
 	}
 }
 
@@ -66,44 +79,64 @@ func (s *Service) Create(ctx context.Context, userID, projectID, reportID uuid.U
 	if _, err := s.reports.GetPublicPayload(ctx, projectID, reportID); err != nil {
 		return ShareDTO{}, err
 	}
-	token, err := domain.NewToken()
+	rawToken, err := domain.NewToken()
 	if err != nil {
 		return ShareDTO{}, err
 	}
-	now := s.now()
-	var exp *time.Time
-	if expiresIn != nil && *expiresIn > 0 {
-		t := now.Add(*expiresIn)
-		exp = &t
+	exp, err := s.resolveExpiry(expiresIn)
+	if err != nil {
+		return ShareDTO{}, err
 	}
+	stored := rawToken
+	if s.shareCfg.HashTokens {
+		stored = domain.HashToken(rawToken)
+	}
+	now := s.now()
 	link := domain.ShareLink{
 		ID: uuid.New(), ReportID: reportID, ProjectID: projectID,
-		Token: token, ExpiresAt: exp, CreatedBy: userID, CreatedAt: now,
+		Token: stored, ExpiresAt: &exp, CreatedBy: userID, CreatedAt: now,
 	}
 	payload, _ := json.Marshal(domain.ShareCreatedEvent{
 		SchemaVersion: 1, ShareID: link.ID.String(), ReportID: reportID.String(),
-		ExpiresAt: exp, OccurredAt: now.UTC(),
+		ExpiresAt: &exp, OccurredAt: now.UTC(),
 	})
 	created, err := s.repo.Create(ctx, link, domain.TopicShareCreated, reportID.String(), payload, "")
 	if err != nil {
 		return ShareDTO{}, err
 	}
-	return toDTO(created), nil
+	return toCreateDTO(created, rawToken), nil
 }
 
-func (s *Service) List(ctx context.Context, userID, projectID, reportID uuid.UUID) ([]ShareDTO, error) {
+func (s *Service) resolveExpiry(expiresIn *time.Duration) (time.Time, error) {
+	ttl := s.shareCfg.DefaultTTL
+	if expiresIn != nil {
+		if *expiresIn <= 0 {
+			return time.Time{}, domain.ErrInvalidInput
+		}
+		ttl = *expiresIn
+	}
+	if ttl <= 0 {
+		return time.Time{}, domain.ErrInvalidInput
+	}
+	if s.shareCfg.MaxTTL > 0 && ttl > s.shareCfg.MaxTTL {
+		return time.Time{}, domain.ErrInvalidInput
+	}
+	return s.now().Add(ttl), nil
+}
+
+func (s *Service) List(ctx context.Context, userID, projectID, reportID uuid.UUID, page pagination.Page) (pagination.Result[ShareDTO], error) {
 	if err := s.access.EnsureMember(ctx, userID, projectID); err != nil {
-		return nil, domain.ErrForbidden
+		return pagination.Result[ShareDTO]{}, domain.ErrForbidden
 	}
-	rows, err := s.repo.ListByReport(ctx, projectID, reportID)
+	rows, err := s.repo.ListByReport(ctx, projectID, reportID, page)
 	if err != nil {
-		return nil, err
+		return pagination.Result[ShareDTO]{}, err
 	}
-	out := make([]ShareDTO, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, toDTO(row))
+	out := make([]ShareDTO, 0, len(rows.Items))
+	for _, row := range rows.Items {
+		out = append(out, toListDTO(row))
 	}
-	return out, nil
+	return pagination.Result[ShareDTO]{Items: out, NextCursor: rows.NextCursor}, nil
 }
 
 func (s *Service) Revoke(ctx context.Context, userID, projectID, shareID uuid.UUID) error {
@@ -117,7 +150,11 @@ func (s *Service) PublicGet(ctx context.Context, token string) (PublicView, erro
 	if token == "" {
 		return PublicView{}, domain.ErrInvalidInput
 	}
-	link, err := s.repo.GetByToken(ctx, token)
+	lookup := token
+	if s.shareCfg.HashTokens {
+		lookup = domain.HashToken(token)
+	}
+	link, err := s.repo.GetByToken(ctx, lookup)
 	if err != nil {
 		return PublicView{}, err
 	}
@@ -146,4 +183,8 @@ func (s *Service) PublicGet(ctx context.Context, token string) (PublicView, erro
 		}
 	}
 	return view, nil
+}
+
+func (s *Service) ListLimits() pagination.Limits {
+	return pagination.Limits{Default: s.listCfg.DefaultLimit, Max: s.listCfg.MaxLimit}
 }

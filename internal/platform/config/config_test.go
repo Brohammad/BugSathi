@@ -75,6 +75,15 @@ func TestProductionRejectsPprof(t *testing.T) {
 	}
 }
 
+func TestProductionRejectsPlaintextShareTokens(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("SHARE_HASH_TOKENS", "false")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "SHARE_HASH_TOKENS") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func setProdEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("APP_ENV", "production")

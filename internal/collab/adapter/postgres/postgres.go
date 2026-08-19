@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/collab/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -44,26 +46,50 @@ func (r *Repo) Create(ctx context.Context, c domain.Comment, outboxTopic, partit
 	return out, nil
 }
 
-func (r *Repo) ListByReport(ctx context.Context, projectID, reportID uuid.UUID) ([]domain.Comment, error) {
-	const q = `
-		SELECT id, report_id, project_id, author_id, body, created_at
-		FROM report_comments
-		WHERE project_id = $1 AND report_id = $2
-		ORDER BY created_at ASC`
-	rows, err := r.pool.Query(ctx, q, projectID, reportID)
+func (r *Repo) ListByReport(ctx context.Context, projectID, reportID uuid.UUID, page pagination.Page) (pagination.Result[domain.Comment], error) {
+	limit := page.Limit + 1
+	var rows pgx.Rows
+	var err error
+	if page.Cursor == "" {
+		const q = `
+			SELECT id, report_id, project_id, author_id, body, created_at
+			FROM report_comments
+			WHERE project_id = $1 AND report_id = $2
+			ORDER BY created_at ASC, id ASC
+			LIMIT $3`
+		rows, err = r.pool.Query(ctx, q, projectID, reportID, limit)
+	} else {
+		at, id, err := pagination.DecodeCursor(page.Cursor)
+		if err != nil {
+			return pagination.Result[domain.Comment]{}, err
+		}
+		const q = `
+			SELECT id, report_id, project_id, author_id, body, created_at
+			FROM report_comments
+			WHERE project_id = $1 AND report_id = $2
+			  AND (created_at, id) > ($3, $4)
+			ORDER BY created_at ASC, id ASC
+			LIMIT $5`
+		rows, err = r.pool.Query(ctx, q, projectID, reportID, at, id, limit)
+	}
 	if err != nil {
-		return nil, err
+		return pagination.Result[domain.Comment]{}, err
 	}
 	defer rows.Close()
 	var out []domain.Comment
 	for rows.Next() {
 		c, err := scanComment(rows)
 		if err != nil {
-			return nil, err
+			return pagination.Result[domain.Comment]{}, err
 		}
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return pagination.Result[domain.Comment]{}, err
+	}
+	return pagination.TrimPage(page, out, func(c domain.Comment) (time.Time, uuid.UUID) {
+		return c.CreatedAt, c.ID
+	}), nil
 }
 
 type ReportGuard struct {

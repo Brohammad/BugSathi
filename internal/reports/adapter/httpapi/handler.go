@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	authhttp "github.com/Brohammad/BugSathi/internal/auth/adapter/httpapi"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/reports/domain"
 	"github.com/Brohammad/BugSathi/internal/reports/service"
 	"github.com/google/uuid"
@@ -32,12 +33,17 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := h.svc.List(r.Context(), uid, projectID)
+	page := pagination.Parse(r, h.svc.ListLimits(), pagination.Desc)
+	result, err := h.svc.List(r.Context(), uid, projectID, page)
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"reports": items})
+	body := map[string]any{"reports": result.Items}
+	if result.NextCursor != "" {
+		body["next_cursor"] = result.NextCursor
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {

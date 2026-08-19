@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/projects/domain"
 	"github.com/Brohammad/BugSathi/internal/projects/port"
 	"github.com/google/uuid"
@@ -60,19 +62,38 @@ func (r *Repo) GetByID(ctx context.Context, id uuid.UUID) (domain.Project, error
 	return out, err
 }
 
-func (r *Repo) ListForUser(ctx context.Context, userID uuid.UUID) ([]port.ProjectWithRole, error) {
-	const q = `
-		SELECT p.id, p.name, p.created_by, p.created_at, p.updated_at, pm.role
-		FROM projects p
-		INNER JOIN project_members pm ON pm.project_id = p.id
-		WHERE pm.user_id = $1
-		ORDER BY p.created_at DESC`
-	rows, err := r.pool.Query(ctx, q, userID)
+func (r *Repo) ListForUser(ctx context.Context, userID uuid.UUID, page pagination.Page) (pagination.Result[port.ProjectWithRole], error) {
+	limit := page.Limit + 1
+	var rows pgx.Rows
+	var err error
+	if page.Cursor == "" {
+		const q = `
+			SELECT p.id, p.name, p.created_by, p.created_at, p.updated_at, pm.role
+			FROM projects p
+			INNER JOIN project_members pm ON pm.project_id = p.id
+			WHERE pm.user_id = $1
+			ORDER BY p.created_at DESC, p.id DESC
+			LIMIT $2`
+		rows, err = r.pool.Query(ctx, q, userID, limit)
+	} else {
+		at, id, err := pagination.DecodeCursor(page.Cursor)
+		if err != nil {
+			return pagination.Result[port.ProjectWithRole]{}, err
+		}
+		const q = `
+			SELECT p.id, p.name, p.created_by, p.created_at, p.updated_at, pm.role
+			FROM projects p
+			INNER JOIN project_members pm ON pm.project_id = p.id
+			WHERE pm.user_id = $1
+			  AND (p.created_at, p.id) < ($2, $3)
+			ORDER BY p.created_at DESC, p.id DESC
+			LIMIT $4`
+		rows, err = r.pool.Query(ctx, q, userID, at, id, limit)
+	}
 	if err != nil {
-		return nil, err
+		return pagination.Result[port.ProjectWithRole]{}, err
 	}
 	defer rows.Close()
-
 	var out []port.ProjectWithRole
 	for rows.Next() {
 		var item port.ProjectWithRole
@@ -81,12 +102,17 @@ func (r *Repo) ListForUser(ctx context.Context, userID uuid.UUID) ([]port.Projec
 			&item.Project.ID, &item.Project.Name, &item.Project.CreatedBy,
 			&item.Project.CreatedAt, &item.Project.UpdatedAt, &role,
 		); err != nil {
-			return nil, err
+			return pagination.Result[port.ProjectWithRole]{}, err
 		}
 		item.Role = domain.Role(role)
 		out = append(out, item)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return pagination.Result[port.ProjectWithRole]{}, err
+	}
+	return pagination.TrimPage(page, out, func(item port.ProjectWithRole) (time.Time, uuid.UUID) {
+		return item.Project.CreatedAt, item.Project.ID
+	}), nil
 }
 
 func (r *Repo) Update(ctx context.Context, project domain.Project) (domain.Project, error) {
@@ -146,13 +172,32 @@ func (r *Repo) AddMember(ctx context.Context, member domain.Member) error {
 	return nil
 }
 
-func (r *Repo) ListMembers(ctx context.Context, projectID uuid.UUID) ([]domain.Member, error) {
-	const q = `
-		SELECT project_id, user_id, role, created_at
-		FROM project_members WHERE project_id = $1 ORDER BY created_at`
-	rows, err := r.pool.Query(ctx, q, projectID)
+func (r *Repo) ListMembers(ctx context.Context, projectID uuid.UUID, page pagination.Page) (pagination.Result[domain.Member], error) {
+	limit := page.Limit + 1
+	var rows pgx.Rows
+	var err error
+	if page.Cursor == "" {
+		const q = `
+			SELECT project_id, user_id, role, created_at
+			FROM project_members WHERE project_id = $1
+			ORDER BY created_at ASC, user_id ASC
+			LIMIT $2`
+		rows, err = r.pool.Query(ctx, q, projectID, limit)
+	} else {
+		at, id, err := pagination.DecodeCursor(page.Cursor)
+		if err != nil {
+			return pagination.Result[domain.Member]{}, err
+		}
+		const q = `
+			SELECT project_id, user_id, role, created_at
+			FROM project_members WHERE project_id = $1
+			  AND (created_at, user_id) > ($2, $3)
+			ORDER BY created_at ASC, user_id ASC
+			LIMIT $4`
+		rows, err = r.pool.Query(ctx, q, projectID, at, id, limit)
+	}
 	if err != nil {
-		return nil, err
+		return pagination.Result[domain.Member]{}, err
 	}
 	defer rows.Close()
 	var out []domain.Member
@@ -160,12 +205,17 @@ func (r *Repo) ListMembers(ctx context.Context, projectID uuid.UUID) ([]domain.M
 		var m domain.Member
 		var role string
 		if err := rows.Scan(&m.ProjectID, &m.UserID, &role, &m.CreatedAt); err != nil {
-			return nil, err
+			return pagination.Result[domain.Member]{}, err
 		}
 		m.Role = domain.Role(role)
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return pagination.Result[domain.Member]{}, err
+	}
+	return pagination.TrimPage(page, out, func(m domain.Member) (time.Time, uuid.UUID) {
+		return m.CreatedAt, m.UserID
+	}), nil
 }
 
 func (r *Repo) CountOwners(ctx context.Context, projectID uuid.UUID) (int, error) {

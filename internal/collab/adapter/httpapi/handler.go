@@ -9,6 +9,7 @@ import (
 
 	authhttp "github.com/Brohammad/BugSathi/internal/auth/adapter/httpapi"
 	"github.com/Brohammad/BugSathi/internal/collab/domain"
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/collab/service"
 	"github.com/google/uuid"
 )
@@ -54,12 +55,17 @@ func (h *Handler) ListComments(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := h.svc.ListComments(r.Context(), uid, projectID, reportID)
+	page := pagination.Parse(r, h.svc.ListLimits(), pagination.Asc)
+	result, err := h.svc.ListComments(r.Context(), uid, projectID, reportID, page)
 	if err != nil {
 		writeDomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"comments": items})
+	body := map[string]any{"comments": result.Items}
+	if result.NextCursor != "" {
+		body["next_cursor"] = result.NextCursor
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (h *Handler) Events(w http.ResponseWriter, r *http.Request) {

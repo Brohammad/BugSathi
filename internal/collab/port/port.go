@@ -3,6 +3,7 @@ package port
 import (
 	"context"
 
+	"github.com/Brohammad/BugSathi/internal/platform/pagination"
 	"github.com/Brohammad/BugSathi/internal/collab/domain"
 	"github.com/google/uuid"
 )
@@ -21,7 +22,7 @@ type AuthorLookup interface {
 
 type Repository interface {
 	Create(ctx context.Context, c domain.Comment, outboxTopic, partitionKey string, payload []byte, corr string) (domain.Comment, error)
-	ListByReport(ctx context.Context, projectID, reportID uuid.UUID) ([]domain.Comment, error)
+	ListByReport(ctx context.Context, projectID, reportID uuid.UUID, page pagination.Page) (pagination.Result[domain.Comment], error)
 }
 
 type PresenceUser struct {
