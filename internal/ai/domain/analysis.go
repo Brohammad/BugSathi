@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	mediadomain "github.com/Brohammad/BugSathi/internal/media/domain"
@@ -10,7 +11,8 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("not found")
+	ErrNotFound             = errors.New("not found")
+	ErrInvalidAnalysisResult = errors.New("invalid analysis result")
 )
 
 const PromptVersion = "prompt_v1"
@@ -86,6 +88,39 @@ type AnalysisResult struct {
 	Steps    []string
 	Provider string
 	Model    string
+}
+
+// ValidateAnalysisResult rejects empty or malformed LLM output before persistence.
+func ValidateAnalysisResult(r AnalysisResult) error {
+	title := strings.TrimSpace(r.Title)
+	summary := strings.TrimSpace(r.Summary)
+	if title == "" || summary == "" {
+		return ErrInvalidAnalysisResult
+	}
+	var steps []string
+	for _, step := range r.Steps {
+		if s := strings.TrimSpace(step); s != "" {
+			steps = append(steps, s)
+		}
+	}
+	if len(steps) == 0 {
+		return ErrInvalidAnalysisResult
+	}
+	return nil
+}
+
+// NormalizeAnalysisResult trims fields and drops blank steps for storage.
+func NormalizeAnalysisResult(r AnalysisResult) AnalysisResult {
+	out := r
+	out.Title = strings.TrimSpace(r.Title)
+	out.Summary = strings.TrimSpace(r.Summary)
+	out.Steps = out.Steps[:0]
+	for _, step := range r.Steps {
+		if s := strings.TrimSpace(step); s != "" {
+			out.Steps = append(out.Steps, s)
+		}
+	}
+	return out
 }
 
 type AnalysisCompletedEvent struct {

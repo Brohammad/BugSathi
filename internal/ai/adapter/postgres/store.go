@@ -108,6 +108,27 @@ func (s *Store) GetRecordingMeta(ctx context.Context, recordingID uuid.UUID) (uu
 	return projectID, meta, err
 }
 
+func (s *Store) GetReportByRecording(ctx context.Context, recordingID uuid.UUID) (domain.Report, error) {
+	const q = `
+		SELECT id, recording_id, project_id, status, title, summary, steps, ai_status, prompt_version, created_at, updated_at
+		FROM reports WHERE recording_id = $1`
+	var out domain.Report
+	var status string
+	err := s.pool.QueryRow(ctx, q, recordingID).Scan(
+		&out.ID, &out.RecordingID, &out.ProjectID, &status,
+		&out.Title, &out.Summary, &out.Steps, &out.AIStatus, &out.PromptVersion,
+		&out.CreatedAt, &out.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.Report{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.Report{}, err
+	}
+	out.Status = domain.ReportStatus(status)
+	return out, nil
+}
+
 type scannable interface{ Scan(dest ...any) error }
 
 func scanAnalysis(row scannable) (domain.Analysis, error) {

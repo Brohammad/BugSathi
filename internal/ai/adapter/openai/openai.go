@@ -135,6 +135,7 @@ func buildPrompt(in domain.AnalysisInput) string {
 		meta = string(in.MetadataJSON)
 	}
 	keys := strings.Join(in.FrameKeys, ", ")
+	// MVP: frame keys are sent as text in the prompt, not as image bytes (see ADR 0030).
 	return fmt.Sprintf(`Create a bug report from this screen recording context.
 recording_id: %s
 project_id: %s
