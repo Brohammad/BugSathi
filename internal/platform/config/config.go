@@ -24,7 +24,17 @@ type Config struct {
 	Cache         CacheConfig
 	Sharing       SharingConfig
 	List          ListConfig
+	Redis         RedisConfig
 	Hardening     HardeningConfig
+}
+
+// RedisConfig enables shared SSE fanout, rate limits, and report cache across API replicas.
+type RedisConfig struct {
+	URL string
+}
+
+func (c RedisConfig) Enabled() bool {
+	return strings.TrimSpace(c.URL) != ""
 }
 
 // SharingConfig controls share-link TTL defaults and token storage.
@@ -191,6 +201,9 @@ func Load() (Config, error) {
 		List: ListConfig{
 			DefaultLimit: getenvInt("LIST_DEFAULT_LIMIT", 50),
 			MaxLimit:     getenvInt("LIST_MAX_LIMIT", 100),
+		},
+		Redis: RedisConfig{
+			URL: getenv("REDIS_URL", ""),
 		},
 		Hardening: HardeningConfig{
 			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),

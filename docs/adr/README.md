@@ -31,5 +31,6 @@
 | [0027](0027-trusted-proxy-prod-guards.md) | Trusted proxy rate limits + prod secret guards | Accepted |
 | [0028](0028-share-defaults-pagination.md) | Share TTL/hash-at-rest + list pagination | Accepted |
 | [0029](0029-auth-refresh-rotate.md) | Atomic refresh token rotation | Accepted |
+| [0031](0031-redis-multi-replica.md) | Optional Redis for multi-replica API | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.
