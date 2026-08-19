@@ -101,6 +101,43 @@ func (r *RefreshRepo) FindByHash(ctx context.Context, hash string) (domain.Refre
 	return out, err
 }
 
+func (r *RefreshRepo) Rotate(ctx context.Context, hash string, at time.Time, replacement domain.RefreshToken) (domain.RefreshToken, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.RefreshToken{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var consumed domain.RefreshToken
+	err = tx.QueryRow(ctx, `
+		UPDATE refresh_tokens SET revoked_at = $2
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > $2
+		RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at`,
+		hash, at,
+	).Scan(&consumed.ID, &consumed.UserID, &consumed.TokenHash, &consumed.ExpiresAt, &consumed.RevokedAt, &consumed.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.RefreshToken{}, domain.ErrUnauthorized
+	}
+	if err != nil {
+		return domain.RefreshToken{}, err
+	}
+
+	replacement.UserID = consumed.UserID
+	const insert = `
+		INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at`
+	if _, err := tx.Exec(ctx, insert,
+		replacement.ID, replacement.UserID, replacement.TokenHash, replacement.ExpiresAt, replacement.RevokedAt, replacement.CreatedAt,
+	); err != nil {
+		return domain.RefreshToken{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.RefreshToken{}, err
+	}
+	return consumed, nil
+}
+
 func (r *RefreshRepo) Revoke(ctx context.Context, id uuid.UUID, at time.Time) error {
 	const q = `UPDATE refresh_tokens SET revoked_at = $2 WHERE id = $1 AND revoked_at IS NULL`
 	ct, err := r.pool.Exec(ctx, q, id, at)
