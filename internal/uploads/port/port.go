@@ -37,7 +37,14 @@ type OutboxMessage struct {
 
 type ObjectStorage interface {
 	PresignPut(ctx context.Context, key, contentType string, expiry time.Duration) (url string, err error)
-	Stat(ctx context.Context, key string) (size int64, contentType string, err error)
+	Stat(ctx context.Context, key string) (ObjectMeta, error)
+}
+
+// ObjectMeta is the subset of object attributes used on upload complete.
+type ObjectMeta struct {
+	Size        int64
+	ContentType string
+	ETag        string
 }
 
 type ProjectAccess interface {

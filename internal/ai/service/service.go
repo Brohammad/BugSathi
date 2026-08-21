@@ -14,17 +14,38 @@ import (
 )
 
 type Service struct {
-	store     port.Store
-	analyzer  port.Analyzer
-	maxFrames int
-	now       func() time.Time
+	store      port.Store
+	analyzer   port.Analyzer
+	maxFrames  int
+	claimLease time.Duration
+	claimRenew time.Duration
+	cache      port.ReportCacheInvalidator
+	now        func() time.Time
 }
 
-func New(store port.Store, analyzer port.Analyzer, maxFrames int) *Service {
+func New(store port.Store, analyzer port.Analyzer, maxFrames int, claimLease, claimRenew time.Duration) *Service {
 	if maxFrames <= 0 {
 		maxFrames = 5
 	}
-	return &Service{store: store, analyzer: analyzer, maxFrames: maxFrames, now: time.Now}
+	if claimLease <= 0 {
+		claimLease = 2 * time.Minute
+	}
+	if claimRenew <= 0 || claimRenew >= claimLease {
+		claimRenew = claimLease / 4
+		if claimRenew < time.Second {
+			claimRenew = time.Second
+		}
+	}
+	return &Service{
+		store: store, analyzer: analyzer, maxFrames: maxFrames,
+		claimLease: claimLease, claimRenew: claimRenew, now: time.Now,
+	}
+}
+
+// WithCacheInvalidator clears report detail caches after successful/failed writes.
+func (s *Service) WithCacheInvalidator(cache port.ReportCacheInvalidator) *Service {
+	s.cache = cache
+	return s
 }
 
 func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesExtractedEvent) error {
@@ -50,13 +71,32 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		return err
 	}
 
-	if _, err := s.store.UpsertRunning(ctx, recordingID, projectID, domain.PromptVersion, s.now()); err != nil {
+	now := s.now()
+	leaseCutoff := now.Add(-s.claimLease)
+	if _, err := s.store.TryClaimRunning(ctx, recordingID, projectID, domain.PromptVersion, now, leaseCutoff); err != nil {
+		if errors.Is(err, domain.ErrAnalysisInFlight) {
+			return err
+		}
+		// Completed raced in between Get and claim.
+		if errors.Is(err, domain.ErrNotFound) {
+			existing, gerr := s.store.GetAnalysis(ctx, recordingID, domain.PromptVersion)
+			if gerr == nil && existing.Status == domain.AnalysisCompleted {
+				return s.emitCompletedEvents(ctx, existing, evt.CorrelationID)
+			}
+			if gerr == nil && existing.Status == domain.AnalysisRunning {
+				return domain.ErrAnalysisInFlight
+			}
+		}
 		return err
 	}
 
+	jobCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go s.renewLease(jobCtx, recordingID, domain.PromptVersion)
+
 	frameKeys := keyframes.Select(evt.FrameKeys, s.maxFrames)
 
-	result, err := s.analyzer.Analyze(ctx, domain.AnalysisInput{
+	result, err := s.analyzer.Analyze(jobCtx, domain.AnalysisInput{
 		RecordingID:   evt.RecordingID,
 		ProjectID:     evt.ProjectID,
 		FrameKeys:     frameKeys,
@@ -65,11 +105,13 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 	})
 	if err != nil {
 		_ = s.store.FailAnalysis(ctx, recordingID, domain.PromptVersion, err.Error(), s.now())
+		s.invalidateReport(ctx, recordingID)
 		return err
 	}
 	result = domain.NormalizeAnalysisResult(result)
 	if err := domain.ValidateAnalysisResult(result); err != nil {
 		_ = s.store.FailAnalysis(ctx, recordingID, domain.PromptVersion, err.Error(), s.now())
+		s.invalidateReport(ctx, recordingID)
 		return err
 	}
 
@@ -77,7 +119,7 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 	if err != nil {
 		return err
 	}
-	now := s.now()
+	now = s.now()
 	analysis := domain.Analysis{
 		ID: uuid.New(), RecordingID: recordingID, ProjectID: projectID,
 		PromptVersion: domain.PromptVersion, Status: domain.AnalysisCompleted,
@@ -92,7 +134,41 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		PromptVersion: domain.PromptVersion, CreatedAt: now, UpdatedAt: now,
 	}
 
-	return s.store.CompleteAnalysis(ctx, analysis, report, s.buildOutboxEvents(report, evt.RecordingID, evt.ProjectID, evt.CorrelationID, now), now)
+	if err := s.store.CompleteAnalysis(ctx, analysis, report, s.buildOutboxEvents(report, evt.RecordingID, evt.ProjectID, evt.CorrelationID, now), now); err != nil {
+		return err
+	}
+	if rep, rerr := s.store.GetReportByRecording(ctx, recordingID); rerr == nil {
+		s.invalidateID(rep.ID)
+	}
+	return nil
+}
+
+func (s *Service) renewLease(ctx context.Context, recordingID uuid.UUID, promptVersion string) {
+	ticker := time.NewTicker(s.claimRenew)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_ = s.store.TouchRunning(context.Background(), recordingID, promptVersion, s.now())
+		}
+	}
+}
+
+func (s *Service) invalidateReport(ctx context.Context, recordingID uuid.UUID) {
+	if s.cache == nil {
+		return
+	}
+	if rep, err := s.store.GetReportByRecording(ctx, recordingID); err == nil {
+		s.invalidateID(rep.ID)
+	}
+}
+
+func (s *Service) invalidateID(reportID uuid.UUID) {
+	if s.cache != nil {
+		s.cache.Invalidate(reportID)
+	}
 }
 
 func (s *Service) emitCompletedEvents(ctx context.Context, existing domain.Analysis, corr string) error {

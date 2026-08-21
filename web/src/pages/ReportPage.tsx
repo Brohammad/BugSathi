@@ -4,10 +4,15 @@ import { api, ApiError } from '../api/client'
 import type { Comment, ReportDetail } from '../api/types'
 import { StatusPill, StepsList } from '../components/ui'
 
+function accessToken(): string | null {
+  return localStorage.getItem('bs_access')
+}
+
 export function ReportPage() {
   const { projectId = '', reportId = '' } = useParams()
   const [detail, setDetail] = useState<ReportDetail | null>(null)
   const [comments, setComments] = useState<Comment[]>([])
+  const [presence, setPresence] = useState(0)
   const [body, setBody] = useState('')
   const [shareUrl, setShareUrl] = useState('')
   const [error, setError] = useState('')
@@ -31,6 +36,38 @@ export function ReportPage() {
     void load()
   }, [projectId, reportId])
 
+  useEffect(() => {
+    const token = accessToken()
+    if (!token || !projectId || !reportId) return
+
+    const url =
+      `/v1/projects/${projectId}/reports/${reportId}/events` +
+      `?access_token=${encodeURIComponent(token)}`
+    const es = new EventSource(url)
+
+    es.addEventListener('comment.created', (ev) => {
+      try {
+        const comment = JSON.parse((ev as MessageEvent).data) as Comment
+        setComments((prev) => (prev.some((c) => c.id === comment.id) ? prev : [...prev, comment]))
+      } catch {
+        /* ignore malformed */
+      }
+    })
+    es.addEventListener('presence.updated', (ev) => {
+      try {
+        const data = JSON.parse((ev as MessageEvent).data) as { users?: unknown[] }
+        if (Array.isArray(data.users)) setPresence(data.users.length)
+      } catch {
+        /* ignore */
+      }
+    })
+    es.onerror = () => {
+      // Browser auto-reconnects; surface nothing sticky for transient blips.
+    }
+
+    return () => es.close()
+  }, [projectId, reportId])
+
   async function onShare() {
     setBusy(true)
     setError('')
@@ -52,7 +89,7 @@ export function ReportPage() {
     setError('')
     try {
       const res = await api.createComment(projectId, reportId, body.trim())
-      setComments((prev) => [...prev, res.comment])
+      setComments((prev) => (prev.some((c) => c.id === res.comment.id) ? prev : [...prev, res.comment]))
       setBody('')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Comment failed')
@@ -92,6 +129,7 @@ export function ReportPage() {
           <StatusPill status={report.status} />
         </div>
         <p>{report.summary}</p>
+        {presence > 0 ? <p className="muted">{presence} viewing</p> : null}
       </div>
 
       {error ? <div className="error">{error}</div> : null}

@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,39 @@ import (
 	"github.com/Brohammad/BugSathi/internal/auth/adapter/password"
 	"github.com/Brohammad/BugSathi/internal/auth/service"
 )
+
+func TestRequireAccessAllowsSSEQueryToken(t *testing.T) {
+	tm, err := jwtmgr.New("0123456789abcdef0123456789abcdef", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := service.New(memory.NewUserRepo(), memory.NewRefreshRepo(), password.NewArgon2id(), tm, time.Hour)
+	_, pair, err := svc.Register(context.Background(), "sse@example.com", "password123", "SSE")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	protected := httpapi.RequireAccess(svc, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := httpapi.UserIDFromContext(r.Context()); !ok {
+			t.Fatal("missing user")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	okReq := httptest.NewRequest(http.MethodGet, "/v1/projects/p/reports/r/events?access_token="+pair.AccessToken, nil)
+	okRR := httptest.NewRecorder()
+	protected.ServeHTTP(okRR, okReq)
+	if okRR.Code != http.StatusNoContent {
+		t.Fatalf("events query auth status=%d", okRR.Code)
+	}
+
+	denied := httptest.NewRequest(http.MethodGet, "/v1/projects/p?access_token="+pair.AccessToken, nil)
+	deniedRR := httptest.NewRecorder()
+	protected.ServeHTTP(deniedRR, denied)
+	if deniedRR.Code != http.StatusUnauthorized {
+		t.Fatalf("non-events query must not auth, got %d", deniedRR.Code)
+	}
+}
 
 func TestAuthHTTPFlow(t *testing.T) {
 	tm, err := jwtmgr.New("0123456789abcdef0123456789abcdef", time.Minute)

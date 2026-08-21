@@ -29,15 +29,40 @@ func (s *Store) GetAnalysis(ctx context.Context, recordingID uuid.UUID, promptVe
 	return scanAnalysis(s.pool.QueryRow(ctx, q, recordingID, promptVersion))
 }
 
-func (s *Store) UpsertRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at time.Time) (domain.Analysis, error) {
+func (s *Store) TryClaimRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time) (domain.Analysis, error) {
 	const q = `
 		INSERT INTO analyses (id, recording_id, project_id, prompt_version, status, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,'running',$5,$5)
 		ON CONFLICT (recording_id, prompt_version) DO UPDATE
 		SET status = 'running', updated_at = EXCLUDED.updated_at, error_message = ''
+		WHERE analyses.status IN ('pending', 'failed')
+		   OR (analyses.status = 'running' AND analyses.updated_at < $6)
 		RETURNING id, recording_id, project_id, prompt_version, status, title, summary, steps,
 			provider, model, error_message, created_at, updated_at`
-	return scanAnalysis(s.pool.QueryRow(ctx, q, uuid.New(), recordingID, projectID, promptVersion, at))
+	out, err := scanAnalysis(s.pool.QueryRow(ctx, q, uuid.New(), recordingID, projectID, promptVersion, at, leaseCutoff))
+	if errors.Is(err, domain.ErrNotFound) {
+		existing, gerr := s.GetAnalysis(ctx, recordingID, promptVersion)
+		if gerr != nil {
+			return domain.Analysis{}, gerr
+		}
+		switch existing.Status {
+		case domain.AnalysisCompleted:
+			return domain.Analysis{}, domain.ErrNotFound
+		case domain.AnalysisRunning:
+			return domain.Analysis{}, domain.ErrAnalysisInFlight
+		default:
+			return domain.Analysis{}, domain.ErrAnalysisInFlight
+		}
+	}
+	return out, err
+}
+
+func (s *Store) TouchRunning(ctx context.Context, recordingID uuid.UUID, promptVersion string, at time.Time) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE analyses SET updated_at = $3
+		WHERE recording_id = $1 AND prompt_version = $2 AND status = 'running'`,
+		recordingID, promptVersion, at)
+	return err
 }
 
 func (s *Store) CompleteAnalysis(ctx context.Context, analysis domain.Analysis, report domain.Report, events []port.OutboxEvent, at time.Time) error {

@@ -140,8 +140,11 @@ func (h *Handler) Reprocess(w http.ResponseWriter, r *http.Request) {
 
 func writeDomainError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, domain.ErrInvalidInput), errors.Is(err, domain.ErrIllegalTransition):
+	case errors.Is(err, domain.ErrInvalidInput), errors.Is(err, domain.ErrIllegalTransition),
+		errors.Is(err, domain.ErrContentTypeMismatch):
 		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, domain.ErrObjectTooLarge):
+		writeError(w, http.StatusRequestEntityTooLarge, err.Error())
 	case errors.Is(err, domain.ErrNotFound), errors.Is(err, domain.ErrObjectMissing):
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, domain.ErrForbidden):

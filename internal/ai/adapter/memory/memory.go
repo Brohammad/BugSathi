@@ -65,16 +65,44 @@ func (s *Store) GetAnalysis(_ context.Context, recordingID uuid.UUID, promptVers
 	return a, nil
 }
 
-func (s *Store) UpsertRunning(_ context.Context, recordingID, projectID uuid.UUID, promptVersion string, at time.Time) (domain.Analysis, error) {
+func (s *Store) TryClaimRunning(_ context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time) (domain.Analysis, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	k := key(recordingID, promptVersion)
+	if existing, ok := s.analyses[k]; ok {
+		switch existing.Status {
+		case domain.AnalysisCompleted:
+			return domain.Analysis{}, domain.ErrNotFound
+		case domain.AnalysisRunning:
+			if !existing.UpdatedAt.Before(leaseCutoff) {
+				return domain.Analysis{}, domain.ErrAnalysisInFlight
+			}
+		}
+	}
 	a := domain.Analysis{
 		ID: uuid.New(), RecordingID: recordingID, ProjectID: projectID,
 		PromptVersion: promptVersion, Status: domain.AnalysisRunning,
 		CreatedAt: at, UpdatedAt: at,
 	}
-	s.analyses[key(recordingID, promptVersion)] = a
+	if existing, ok := s.analyses[k]; ok {
+		a.ID = existing.ID
+		a.CreatedAt = existing.CreatedAt
+	}
+	s.analyses[k] = a
 	return a, nil
+}
+
+func (s *Store) TouchRunning(_ context.Context, recordingID uuid.UUID, promptVersion string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	k := key(recordingID, promptVersion)
+	a, ok := s.analyses[k]
+	if !ok || a.Status != domain.AnalysisRunning {
+		return nil
+	}
+	a.UpdatedAt = at
+	s.analyses[k] = a
+	return nil
 }
 
 func (s *Store) GetReportByRecording(_ context.Context, recordingID uuid.UUID) (domain.Report, error) {
@@ -111,7 +139,25 @@ func (s *Store) FailAnalysis(_ context.Context, recordingID uuid.UUID, promptVer
 	a.ErrorMessage = msg
 	a.UpdatedAt = at
 	s.analyses[key(recordingID, promptVersion)] = a
+	if meta, ok := s.meta[recordingID]; ok {
+		s.reports[recordingID] = domain.Report{
+			ID: uuid.New(), RecordingID: recordingID, ProjectID: meta.ProjectID,
+			Status: domain.ReportFailed, AIStatus: string(domain.AnalysisFailed),
+			PromptVersion: promptVersion, CreatedAt: at, UpdatedAt: at,
+		}
+	}
 	return nil
+}
+
+// SeedRunning plants a fresh in-flight analysis for concurrency tests.
+func (s *Store) SeedRunning(recordingID, projectID uuid.UUID, promptVersion string, at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.analyses[key(recordingID, promptVersion)] = domain.Analysis{
+		ID: uuid.New(), RecordingID: recordingID, ProjectID: projectID,
+		PromptVersion: promptVersion, Status: domain.AnalysisRunning,
+		CreatedAt: at, UpdatedAt: at,
+	}
 }
 
 func (s *Store) GetRecordingMeta(_ context.Context, recordingID uuid.UUID) (uuid.UUID, json.RawMessage, error) {

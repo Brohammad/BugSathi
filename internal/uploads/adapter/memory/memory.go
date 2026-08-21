@@ -160,14 +160,18 @@ func (s *Storage) PresignPut(_ context.Context, key, contentType string, _ time.
 	return "memory://upload/" + key + "?ct=" + contentType, nil
 }
 
-func (s *Storage) Stat(_ context.Context, key string) (int64, string, error) {
+func (s *Storage) Stat(_ context.Context, key string) (port.ObjectMeta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b, ok := s.objs[key]
 	if !ok {
-		return 0, "", domain.ErrObjectMissing
+		return port.ObjectMeta{}, domain.ErrObjectMissing
 	}
-	return int64(len(b)), s.ct[key], nil
+	return port.ObjectMeta{
+		Size:        int64(len(b)),
+		ContentType: s.ct[key],
+		ETag:        fmt.Sprintf("%x", len(b)),
+	}, nil
 }
 
 func (s *Storage) Put(key, contentType string, body []byte) {

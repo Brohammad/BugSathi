@@ -94,6 +94,17 @@ func (c *Consumer) Run(ctx context.Context) error {
 					attribute.String("correlation_id", evt.CorrelationID),
 				)
 				hErr := c.svc.HandleFramesExtracted(spanCtx, evt)
+				if domain.IsInFlight(hErr) {
+					span.SetAttributes(attribute.String("claim_skip_reason", "held"))
+					span.End()
+					if c.metrics != nil {
+						c.metrics.IncClaimSkipped("ai", "held")
+					}
+					log.Info("skipping delivery; analysis claimed by another worker",
+						"recording_id", evt.RecordingID,
+					)
+					return nil
+				}
 				if hErr != nil {
 					span.RecordError(hErr)
 					span.SetStatus(codes.Error, hErr.Error())

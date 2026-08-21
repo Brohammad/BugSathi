@@ -127,7 +127,7 @@ func main() {
 		objectStore,
 		uploadaccess.New(projectService),
 		15*time.Minute,
-	)
+	).WithUploadMaxBytes(cfg.Hardening.UploadMaxBytes)
 	uploadHandler := uploadhttp.NewHandler(uploadService)
 
 	var reportDetailCache reportsvc.DetailCache = reportcache.NewReportCache(cfg.Cache.ReportTTL)

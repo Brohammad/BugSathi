@@ -32,6 +32,8 @@ import (
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
+	platformredis "github.com/Brohammad/BugSathi/internal/platform/redis"
+	reportcache "github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
 	sharingdomain "github.com/Brohammad/BugSathi/internal/sharing/domain"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
@@ -87,7 +89,24 @@ func main() {
 		Metrics: metrics,
 		Name:    cfg.AI.Provider,
 	}
-	aiService := aisvc.New(aipg.NewStore(pool), analyzer, cfg.AI.MaxFrames)
+	aiClaimLease := cfg.AI.ClaimLease
+	if aiClaimLease <= 0 {
+		aiClaimLease = cfg.AI.Timeout + 30*time.Second
+		if aiClaimLease < 2*time.Minute {
+			aiClaimLease = 2 * time.Minute
+		}
+	}
+	aiService := aisvc.New(aipg.NewStore(pool), analyzer, cfg.AI.MaxFrames, aiClaimLease, cfg.AI.ClaimRenew)
+	if cfg.Redis.Enabled() {
+		redisClient, rerr := platformredis.New(cfg.Redis.URL)
+		if rerr != nil {
+			log.Error("redis connect failed", "error", rerr)
+			os.Exit(1)
+		}
+		defer redisClient.Close()
+		aiService = aiService.WithCacheInvalidator(reportcache.NewRedisReportCache(redisClient.Raw(), cfg.Cache.ReportTTL))
+		log.Info("ai report cache invalidation enabled via redis")
+	}
 
 	for _, topic := range []string{
 		mediadomain.TopicRecordingUploaded,

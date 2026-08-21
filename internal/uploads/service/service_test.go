@@ -53,6 +53,9 @@ func TestCreateCompleteIdempotent(t *testing.T) {
 	if dto.ByteSize == nil || *dto.ByteSize != 10 {
 		t.Fatalf("size=%v", dto.ByteSize)
 	}
+	if dto.Checksum == "" {
+		t.Fatal("expected checksum from object etag")
+	}
 	if len(outbox.Messages()) != 1 {
 		t.Fatalf("outbox=%d", len(outbox.Messages()))
 	}
@@ -67,6 +70,59 @@ func TestCreateCompleteIdempotent(t *testing.T) {
 	}
 	if len(outbox.Messages()) != 1 {
 		t.Fatalf("outbox should not duplicate, got %d", len(outbox.Messages()))
+	}
+}
+
+func TestCompleteRejectsTooLarge(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessOK{}, time.Minute).WithUploadMaxBytes(5)
+
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm", Filename: "bug.webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "video/webm", []byte("123456"))
+	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != domain.ErrObjectTooLarge {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestCompleteRejectsContentTypeMismatch(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessOK{}, time.Minute)
+
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm", Filename: "bug.webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "video/mp4", []byte("fake-video"))
+	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != domain.ErrContentTypeMismatch {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestCreateRejectsDisallowedContentType(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	svc := service.New(memory.NewRecordingRepo(outbox), memory.NewStorage(), memory.AccessOK{}, time.Minute)
+	_, err := svc.Create(context.Background(), service.CreateInput{
+		ProjectID: uuid.New(), UserID: uuid.New(), ContentType: "application/pdf",
+	})
+	if err != domain.ErrInvalidInput {
+		t.Fatalf("got %v", err)
 	}
 }
 

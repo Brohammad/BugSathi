@@ -11,9 +11,17 @@ import (
 )
 
 var (
-	ErrNotFound             = errors.New("not found")
+	ErrNotFound              = errors.New("not found")
 	ErrInvalidAnalysisResult = errors.New("invalid analysis result")
+	// ErrAnalysisInFlight means another worker holds a live analysis lease.
+	// Kafka consumers should commit and skip rather than retry into the DLQ.
+	ErrAnalysisInFlight = errors.New("analysis already in progress")
 )
+
+// IsInFlight reports whether the error means some other worker owns this analysis.
+func IsInFlight(err error) bool {
+	return errors.Is(err, ErrAnalysisInFlight)
+}
 
 const PromptVersion = "prompt_v1"
 

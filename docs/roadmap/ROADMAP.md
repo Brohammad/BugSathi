@@ -154,6 +154,14 @@
 - Default off for local single-replica dev; Compose includes Redis service
 - ADR 0031
 
+### M26 — Audit-gap hardening
+- AI soft claim / single-flight while analysis is `running` (lease + Kafka skip)
+- Worker invalidates Redis report cache after AI complete/fail
+- Refresh-token reuse outside grace → revoke all user refresh tokens
+- Upload allowlist + Content-Type-bound presign + size cap + ETag checksum
+- React report page wires SSE (`EventSource` + `access_token` query)
+- ADR 0032
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
