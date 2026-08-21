@@ -11,13 +11,22 @@ import (
 )
 
 var (
-	ErrNotFound             = errors.New("not found")
+	ErrNotFound              = errors.New("not found")
 	ErrInvalidAnalysisResult = errors.New("invalid analysis result")
+	// ErrAnalysisInFlight means another worker holds a live analysis lease.
+	// Kafka consumers should commit and skip rather than retry into the DLQ.
+	ErrAnalysisInFlight = errors.New("analysis already in progress")
 )
+
+// IsInFlight reports whether the error means some other worker owns this analysis.
+func IsInFlight(err error) bool {
+	return errors.Is(err, ErrAnalysisInFlight)
+}
 
 const PromptVersion = "prompt_v1"
 
 const (
+	TopicAnalysisStarted   = "bugsathi.analysis.started"
 	TopicAnalysisCompleted = "bugsathi.analysis.completed"
 	TopicReportGenerated   = "bugsathi.report.generated"
 )
@@ -121,6 +130,16 @@ func NormalizeAnalysisResult(r AnalysisResult) AnalysisResult {
 		}
 	}
 	return out
+}
+
+type AnalysisStartedEvent struct {
+	SchemaVersion int       `json:"schema_version"`
+	RecordingID   string    `json:"recording_id"`
+	ProjectID     string    `json:"project_id"`
+	ReportID      string    `json:"report_id"`
+	PromptVersion string    `json:"prompt_version"`
+	CorrelationID string    `json:"correlation_id"`
+	OccurredAt    time.Time `json:"occurred_at"`
 }
 
 type AnalysisCompletedEvent struct {

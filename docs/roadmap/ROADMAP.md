@@ -125,7 +125,7 @@
 ### M20 — Object cleanup on project delete
 - `DeletePrefix` on MinIO (+ memory) removes `projects/{id}/…` after DB cascade
 - HTTP delete stays 204 if MinIO cleanup fails (logged); missing keys are OK
-- Abandoned `UPLOADING` GC deferred; no per-recording delete API yet
+- Abandoned `UPLOADING` GC via `UPLOAD_ABANDONED_TTL`; per-recording delete API for owners
 - ADR 0026
 
 ### M21 — Trusted proxy & production guards
@@ -153,6 +153,23 @@
 - `REDIS_URL` enables shared SSE pub/sub, rate limits, report cache
 - Default off for local single-replica dev; Compose includes Redis service
 - ADR 0031
+
+### M26 — Audit-gap hardening
+- AI soft claim / single-flight while analysis is `running` (lease + Kafka skip)
+- Worker invalidates Redis report cache after AI complete/fail
+- Refresh-token reuse outside grace → revoke all user refresh tokens
+- Upload allowlist + Content-Type-bound presign + size cap + ETag checksum
+- React report page wires SSE (`EventSource` + `access_token` query)
+- ADR 0032
+
+### M27 — Remaining audit gaps (one commit each)
+- Kafka client ID, header correlation restore, worker drain
+- Redis rate-limit fail-closed + capacity alignment
+- Share create/revoke owner-only; project member remove + last-owner guard
+- CSP + production HSTS
+- Abandoned `UPLOADING` GC; `AnalysisStarted` + report `GENERATING`
+- Per-recording delete API
+- ADR 0033
 
 ## Suggested weekly cadence (flexible)
 

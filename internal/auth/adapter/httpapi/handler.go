@@ -161,12 +161,11 @@ func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 
 func RequireAccess(svc *service.Service, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		header := r.Header.Get("Authorization")
-		if !strings.HasPrefix(header, "Bearer ") {
+		raw := bearerToken(r)
+		if raw == "" {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		raw := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		uid, _, err := svc.ParseAccess(raw)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
@@ -174,4 +173,16 @@ func RequireAccess(svc *service.Service, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ContextWithUserID(r.Context(), uid)))
 	})
+}
+
+func bearerToken(r *http.Request) string {
+	header := r.Header.Get("Authorization")
+	if strings.HasPrefix(header, "Bearer ") {
+		return strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	}
+	// EventSource cannot set Authorization; allow access_token query on SSE routes only.
+	if strings.HasSuffix(r.URL.Path, "/events") {
+		return strings.TrimSpace(r.URL.Query().Get("access_token"))
+	}
+	return ""
 }

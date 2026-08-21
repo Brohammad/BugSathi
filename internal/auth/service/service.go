@@ -20,6 +20,7 @@ type Service struct {
 	hasher     port.PasswordHasher
 	tokens     port.TokenManager
 	refreshTTL time.Duration
+	reuseGrace time.Duration
 	now        func() time.Time
 }
 
@@ -36,8 +37,15 @@ func New(
 		hasher:     hasher,
 		tokens:     tokens,
 		refreshTTL: refreshTTL,
+		reuseGrace: 10 * time.Second,
 		now:        time.Now,
 	}
+}
+
+// WithReuseGrace overrides the refresh-theft detection grace window (tests).
+func (s *Service) WithReuseGrace(d time.Duration) *Service {
+	s.reuseGrace = d
+	return s
 }
 
 type TokenPair struct {
@@ -125,13 +133,15 @@ func (s *Service) Refresh(ctx context.Context, rawRefresh string) (TokenPair, er
 	}
 	now := s.now()
 	exp := now.Add(s.refreshTTL)
-	consumed, err := s.refresh.Rotate(ctx, hashToken(rawRefresh), now, domain.RefreshToken{
+	hash := hashToken(rawRefresh)
+	consumed, err := s.refresh.Rotate(ctx, hash, now, domain.RefreshToken{
 		ID:        uuid.New(),
 		TokenHash: hashToken(rawNew),
 		ExpiresAt: exp,
 		CreatedAt: now,
 	})
 	if err != nil {
+		s.revokeFamilyOnReuse(ctx, hash, now)
 		return TokenPair{}, err
 	}
 	user, err := s.users.FindByID(ctx, consumed.UserID)
@@ -149,6 +159,21 @@ func (s *Service) Refresh(ctx context.Context, rawRefresh string) (TokenPair, er
 		RefreshExpiresAt: exp,
 		TokenType:        "Bearer",
 	}, nil
+}
+
+// revokeFamilyOnReuse detects refresh-token reuse (theft) and revokes every
+// active refresh token for that user. A short grace window avoids wiping a
+// legitimate concurrent refresh that just won the rotation race.
+func (s *Service) revokeFamilyOnReuse(ctx context.Context, hash string, now time.Time) {
+	rec, err := s.refresh.FindByHash(ctx, hash)
+	if err != nil || rec.RevokedAt == nil {
+		return
+	}
+	const reuseGrace = 10 * time.Second
+	if now.Sub(*rec.RevokedAt) <= s.reuseGrace {
+		return
+	}
+	_ = s.refresh.RevokeAllForUser(ctx, rec.UserID, now)
 }
 
 func (s *Service) Logout(ctx context.Context, rawRefresh string) error {

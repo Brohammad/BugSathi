@@ -172,6 +172,18 @@ func (r *Repo) AddMember(ctx context.Context, member domain.Member) error {
 	return nil
 }
 
+func (r *Repo) RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error {
+	const q = `DELETE FROM project_members WHERE project_id = $1 AND user_id = $2`
+	ct, err := r.pool.Exec(ctx, q, projectID, userID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *Repo) ListMembers(ctx context.Context, projectID uuid.UUID, page pagination.Page) (pagination.Result[domain.Member], error) {
 	limit := page.Limit + 1
 	var rows pgx.Rows

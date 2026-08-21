@@ -64,12 +64,14 @@ type ObservabilityConfig struct {
 }
 
 type AIConfig struct {
-	Provider  string // mock | openai
-	BaseURL   string
-	APIKey    string
-	Model     string
-	Timeout   time.Duration
-	MaxFrames int
+	Provider   string // mock | openai
+	BaseURL    string
+	APIKey     string
+	Model      string
+	Timeout    time.Duration
+	MaxFrames  int
+	ClaimLease time.Duration // soft lease via analyses.updated_at
+	ClaimRenew time.Duration
 }
 
 type AuthConfig struct {
@@ -115,10 +117,19 @@ type CacheConfig struct {
 }
 
 type HardeningConfig struct {
-	MaxBodyBytes int64
-	CORSOrigins  []string
-	RateLimit    RateLimitConfig
-	KafkaRetry   KafkaRetryConfig
+	MaxBodyBytes   int64
+	UploadMaxBytes int64 // max accepted object size on upload complete; 0 disables
+	CORSOrigins    []string
+	RateLimit      RateLimitConfig
+	KafkaRetry     KafkaRetryConfig
+	UploadGC       UploadGCConfig
+}
+
+// UploadGCConfig sweeps abandoned UPLOADING sessions (0 TTL disables).
+type UploadGCConfig struct {
+	TTL      time.Duration
+	Interval time.Duration
+	Batch    int
 }
 
 type RateLimitConfig struct {
@@ -174,12 +185,14 @@ func Load() (Config, error) {
 			RefreshTokenTTL: getenvDuration("AUTH_REFRESH_TTL", 7*24*time.Hour),
 		},
 		AI: AIConfig{
-			Provider:  getenv("AI_PROVIDER", "mock"),
-			BaseURL:   getenv("AI_BASE_URL", "https://api.openai.com/v1"),
-			APIKey:    getenv("AI_API_KEY", ""),
-			Model:     getenv("AI_MODEL", "gpt-4o-mini"),
-			Timeout:   getenvDuration("AI_TIMEOUT", 60*time.Second),
-			MaxFrames: getenvInt("AI_MAX_FRAMES", 5),
+			Provider:   getenv("AI_PROVIDER", "mock"),
+			BaseURL:    getenv("AI_BASE_URL", "https://api.openai.com/v1"),
+			APIKey:     getenv("AI_API_KEY", ""),
+			Model:      getenv("AI_MODEL", "gpt-4o-mini"),
+			Timeout:    getenvDuration("AI_TIMEOUT", 60*time.Second),
+			MaxFrames:  getenvInt("AI_MAX_FRAMES", 5),
+			ClaimLease: getenvDuration("AI_CLAIM_LEASE", 0), // 0 → Timeout+30s (min 2m) in worker
+			ClaimRenew: getenvDuration("AI_CLAIM_RENEW", 30*time.Second),
 		},
 		Media: MediaConfig{
 			WorkerID:   getenv("WORKER_ID", ""),
@@ -206,8 +219,9 @@ func Load() (Config, error) {
 			URL: getenv("REDIS_URL", ""),
 		},
 		Hardening: HardeningConfig{
-			MaxBodyBytes: int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
-			CORSOrigins:  getenvCSV("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
+			MaxBodyBytes:   int64(getenvInt("MAX_BODY_BYTES", 1<<20)),
+			UploadMaxBytes: int64(getenvInt("UPLOAD_MAX_BYTES", 500<<20)),
+			CORSOrigins:    getenvCSV("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"),
 			RateLimit: RateLimitConfig{
 				RPS:            getenvFloat("RATE_LIMIT_RPS", 20),
 				Burst:          getenvInt("RATE_LIMIT_BURST", 40),
@@ -220,6 +234,11 @@ func Load() (Config, error) {
 				Base:        getenvDuration("KAFKA_RETRY_BASE", time.Second),
 				Max:         getenvDuration("KAFKA_RETRY_MAX", 30*time.Second),
 				MaxAttempts: getenvInt("KAFKA_RETRY_MAX_ATTEMPTS", 5),
+			},
+			UploadGC: UploadGCConfig{
+				TTL:      getenvDuration("UPLOAD_ABANDONED_TTL", 24*time.Hour),
+				Interval: getenvDuration("UPLOAD_GC_INTERVAL", 15*time.Minute),
+				Batch:    getenvInt("UPLOAD_GC_BATCH", 50),
 			},
 		},
 	}
