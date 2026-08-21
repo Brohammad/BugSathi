@@ -146,6 +146,52 @@ func (r *RecordingRepo) InsertOutbox(
 	return nil
 }
 
+func (r *RecordingRepo) ListAbandonedUploading(_ context.Context, cutoff time.Time, limit int) ([]domain.Recording, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 {
+		limit = 50
+	}
+	var out []domain.Recording
+	for _, rec := range r.byID {
+		if rec.Status != domain.StatusUploading {
+			continue
+		}
+		if !rec.UpdatedAt.Before(cutoff) {
+			continue
+		}
+		out = append(out, rec)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (r *RecordingRepo) DeleteIfStatus(_ context.Context, id uuid.UUID, status domain.Status) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rec, ok := r.byID[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	if rec.Status != status {
+		return domain.ErrNotFound
+	}
+	delete(r.byID, id)
+	return nil
+}
+
+func (r *RecordingRepo) Delete(_ context.Context, id uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.byID[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(r.byID, id)
+	return nil
+}
+
 type Storage struct {
 	mu   sync.Mutex
 	objs map[string][]byte
@@ -160,14 +206,18 @@ func (s *Storage) PresignPut(_ context.Context, key, contentType string, _ time.
 	return "memory://upload/" + key + "?ct=" + contentType, nil
 }
 
-func (s *Storage) Stat(_ context.Context, key string) (int64, string, error) {
+func (s *Storage) Stat(_ context.Context, key string) (port.ObjectMeta, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b, ok := s.objs[key]
 	if !ok {
-		return 0, "", domain.ErrObjectMissing
+		return port.ObjectMeta{}, domain.ErrObjectMissing
 	}
-	return int64(len(b)), s.ct[key], nil
+	return port.ObjectMeta{
+		Size:        int64(len(b)),
+		ContentType: s.ct[key],
+		ETag:        fmt.Sprintf("%x", len(b)),
+	}, nil
 }
 
 func (s *Storage) Put(key, contentType string, body []byte) {

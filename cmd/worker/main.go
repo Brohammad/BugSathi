@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,10 +33,14 @@ import (
 	"github.com/Brohammad/BugSathi/internal/platform/logging"
 	"github.com/Brohammad/BugSathi/internal/platform/observability"
 	"github.com/Brohammad/BugSathi/internal/platform/pprofx"
+	platformredis "github.com/Brohammad/BugSathi/internal/platform/redis"
+	reportcache "github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
 	sharingdomain "github.com/Brohammad/BugSathi/internal/sharing/domain"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
+	uploadmemaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/memory"
+	uploadsvc "github.com/Brohammad/BugSathi/internal/uploads/service"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -87,11 +92,29 @@ func main() {
 		Metrics: metrics,
 		Name:    cfg.AI.Provider,
 	}
-	aiService := aisvc.New(aipg.NewStore(pool), analyzer, cfg.AI.MaxFrames)
+	aiClaimLease := cfg.AI.ClaimLease
+	if aiClaimLease <= 0 {
+		aiClaimLease = cfg.AI.Timeout + 30*time.Second
+		if aiClaimLease < 2*time.Minute {
+			aiClaimLease = 2 * time.Minute
+		}
+	}
+	aiService := aisvc.New(aipg.NewStore(pool), analyzer, cfg.AI.MaxFrames, aiClaimLease, cfg.AI.ClaimRenew)
+	if cfg.Redis.Enabled() {
+		redisClient, rerr := platformredis.New(cfg.Redis.URL)
+		if rerr != nil {
+			log.Error("redis connect failed", "error", rerr)
+			os.Exit(1)
+		}
+		defer redisClient.Close()
+		aiService = aiService.WithCacheInvalidator(reportcache.NewRedisReportCache(redisClient.Raw(), cfg.Cache.ReportTTL))
+		log.Info("ai report cache invalidation enabled via redis")
+	}
 
 	for _, topic := range []string{
 		mediadomain.TopicRecordingUploaded,
 		mediadomain.TopicFramesExtracted,
+		aidomain.TopicAnalysisStarted,
 		aidomain.TopicAnalysisCompleted,
 		aidomain.TopicReportGenerated,
 		sharingdomain.TopicShareCreated,
@@ -107,23 +130,83 @@ func main() {
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
 	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
-	go relay.Run(ctx)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		relay.Run(ctx)
+	}()
 	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
 
-	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub)
-	defer mediaConsumer.Close()
+	if gc := cfg.Hardening.UploadGC; gc.TTL > 0 {
+		uploadGC := uploadsvc.New(
+			uploadpg.NewRecordingRepo(pool),
+			objectStore,
+			uploadmemaccess.AccessOK{},
+			15*time.Minute,
+		)
+		interval := gc.Interval
+		if interval <= 0 {
+			interval = 15 * time.Minute
+		}
+		batch := gc.Batch
+		if batch <= 0 {
+			batch = 50
+		}
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			run := func() {
+				n, err := uploadGC.SweepAbandonedUploads(ctx, gc.TTL, batch)
+				if err != nil && ctx.Err() == nil {
+					log.Error("upload gc failed", "error", err)
+					return
+				}
+				if n > 0 {
+					log.Info("upload gc swept abandoned uploading", "count", n)
+				}
+			}
+			run()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					run()
+				}
+			}
+		}()
+		log.Info("upload abandoned GC enabled", "ttl", gc.TTL, "interval", interval, "batch", batch)
+	}
+
+	attemptStore := platformkafka.NewPostgresAttemptStore(pool, log)
+	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub, attemptStore)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := mediaConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("media consumer stopped", "error", err)
 			stop()
 		}
 	}()
 
-	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics, kafkaPub)
-	defer aiConsumer.Close()
+	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics, kafkaPub, attemptStore)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := aiConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("ai consumer stopped", "error", err)
+			stop()
+		}
+	}()
+
+	startedConsumer := aikafka.NewStartedConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, log, metrics)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := startedConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("analysis started consumer stopped", "error", err)
 			stop()
 		}
 	}()
@@ -164,7 +247,24 @@ func main() {
 			log.Error("server error", "error", err)
 			os.Exit(1)
 		}
+		stop()
 	}
+
+	drainDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(drainDone)
+	}()
+	select {
+	case <-drainDone:
+		log.Info("pipeline drained")
+	case <-time.After(config.ShutdownTimeout()):
+		log.Warn("pipeline drain timed out")
+	}
+
+	_ = mediaConsumer.Close()
+	_ = aiConsumer.Close()
+	_ = startedConsumer.Close()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout())
 	defer cancel()

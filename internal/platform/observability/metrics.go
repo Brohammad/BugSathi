@@ -31,6 +31,7 @@ type Metrics struct {
 	RateLimitRejected *prometheus.CounterVec
 	DLQPublished      *prometheus.CounterVec
 	ClaimSkipped      *prometheus.CounterVec
+	AnalysisStarted   prometheus.Counter
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -74,8 +75,12 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "bugsathi_claim_skipped_total",
 			Help: "Deliveries skipped because another worker owned the processing claim.",
 		}, []string{"stage", "reason"}),
+		AnalysisStarted: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "bugsathi_analysis_started_total",
+			Help: "AnalysisStarted events consumed (observability fan-in).",
+		}),
 	}
-	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending, m.RateLimitRejected, m.DLQPublished, m.ClaimSkipped)
+	reg.MustRegister(m.HTTPRequests, m.HTTPDuration, m.PipelineJobs, m.PipelineDuration, m.AIDuration, m.OutboxPending, m.RateLimitRejected, m.DLQPublished, m.ClaimSkipped, m.AnalysisStarted)
 	return m
 }
 
@@ -121,6 +126,13 @@ func (m *Metrics) IncDLQ(sourceTopic string) {
 		return
 	}
 	m.DLQPublished.WithLabelValues(sourceTopic).Inc()
+}
+
+func (m *Metrics) IncAnalysisStarted() {
+	if m == nil || m.AnalysisStarted == nil {
+		return
+	}
+	m.AnalysisStarted.Inc()
 }
 
 func statusClass(code int) string {

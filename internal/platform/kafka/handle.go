@@ -26,7 +26,7 @@ func HandleWithRetries(
 	reader MessageReader,
 	msg kafkago.Message,
 	retry config.KafkaRetryConfig,
-	attempts *AttemptTracker,
+	attempts AttemptCounter,
 	handle func(context.Context) error,
 	deadLetter DeadLetterFunc,
 	log *slog.Logger,

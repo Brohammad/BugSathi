@@ -63,6 +63,14 @@ func (r *Repo) GetByToken(_ context.Context, token string) (domain.ShareLink, er
 type AccessOK struct{}
 
 func (AccessOK) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (AccessOK) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error  { return nil }
+
+type AccessMemberOnly struct{}
+
+func (AccessMemberOnly) EnsureMember(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (AccessMemberOnly) EnsureOwner(context.Context, uuid.UUID, uuid.UUID) error {
+	return domain.ErrForbidden
+}
 
 type Reports struct {
 	payload port.PublicReport

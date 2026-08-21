@@ -127,7 +127,7 @@ func main() {
 		objectStore,
 		uploadaccess.New(projectService),
 		15*time.Minute,
-	)
+	).WithUploadMaxBytes(cfg.Hardening.UploadMaxBytes)
 	uploadHandler := uploadhttp.NewHandler(uploadService)
 
 	var reportDetailCache reportsvc.DetailCache = reportcache.NewReportCache(cfg.Cache.ReportTTL)
@@ -243,7 +243,7 @@ func main() {
 		Addr: cfg.HTTPAddr,
 		Handler: httpx.RequestIDs(
 			httpx.CORS(cfg.Hardening.CORSOrigins,
-				httpx.SecurityHeaders(core),
+				httpx.SecurityHeaders(httpx.IsProduction(cfg.AppEnv), core),
 			),
 		),
 	}

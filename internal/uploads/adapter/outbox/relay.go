@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	pkafka "github.com/Brohammad/BugSathi/internal/platform/kafka"
 	"github.com/Brohammad/BugSathi/internal/uploads/port"
 )
 
@@ -34,11 +35,16 @@ func (r *Relay) Run(ctx context.Context) {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 	for {
-		if err := r.Flush(ctx); err != nil {
+		if err := r.Flush(ctx); err != nil && ctx.Err() == nil {
 			r.log.Error("outbox flush failed", "error", err)
 		}
 		select {
 		case <-ctx.Done():
+			flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := r.Flush(flushCtx); err != nil {
+				r.log.Error("outbox final flush failed", "error", err)
+			}
 			return
 		case <-ticker.C:
 		}
@@ -52,7 +58,12 @@ func (r *Relay) Flush(ctx context.Context) error {
 		for _, m := range msgs {
 			headers := map[string]string{}
 			if m.CorrelationID != "" {
-				headers["correlation_id"] = m.CorrelationID
+				headers[pkafka.HeaderCorrelationID] = m.CorrelationID
+			}
+			// Pipeline events use recording_id as the partition key; expose it
+			// as a header so consumers can restore context without parsing JSON.
+			if m.PartitionKey != "" {
+				headers[pkafka.HeaderRecordingID] = m.PartitionKey
 			}
 			if err := r.pub.Publish(ctx, m.Topic, m.PartitionKey, m.Payload, headers); err != nil {
 				return err

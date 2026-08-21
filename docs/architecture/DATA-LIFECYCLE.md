@@ -62,9 +62,10 @@ ShareCreated → public GET /s/{token}
 ## Deletion
 
 Owner `DELETE /v1/projects/{id}` cascades Postgres rows, then best-effort
-deletes every object under `projects/{project_id}/` (ADR 0026). There is no
-per-recording delete API yet. Abandoned `UPLOADING` objects for projects that
-still exist are not swept automatically.
+deletes every object under `projects/{project_id}/` (ADR 0026). Owners may also
+`DELETE /v1/projects/{id}/recordings/{recording_id}` (recording prefix cleanup).
+Abandoned `UPLOADING` sessions older than `UPLOAD_ABANDONED_TTL` are swept by
+the worker (default 24h).
 
 ## Who writes what
 
@@ -72,7 +73,7 @@ still exist are not swept automatically.
 |-------|--------|
 | API | `recordings` (upload path), `users`, `projects`, `share_links`, outbox for upload events |
 | Media Worker | `media_artifacts`, `recordings.status`, outbox `FramesExtracted` |
-| AI Worker | `analyses`, `reports`, outbox `AnalysisCompleted` / `ReportGenerated` |
+| AI Worker | `analyses`, `reports` (`GENERATING` → `READY`/`FAILED`), outbox `AnalysisStarted` / `AnalysisCompleted` / `ReportGenerated` |
 
 API is **not** the write gateway for workers.
 

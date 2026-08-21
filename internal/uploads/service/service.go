@@ -15,11 +15,12 @@ import (
 )
 
 type Service struct {
-	recordings port.RecordingRepository
-	storage    port.ObjectStorage
-	access     port.ProjectAccess
-	presignTTL time.Duration
-	now        func() time.Time
+	recordings     port.RecordingRepository
+	storage        port.ObjectStorage
+	access         port.ProjectAccess
+	presignTTL     time.Duration
+	uploadMaxBytes int64
+	now            func() time.Time
 }
 
 func New(
@@ -38,6 +39,25 @@ func New(
 		presignTTL: presignTTL,
 		now:        time.Now,
 	}
+}
+
+// WithUploadMaxBytes caps accepted object size on complete (0 = unlimited).
+func (s *Service) WithUploadMaxBytes(n int64) *Service {
+	s.uploadMaxBytes = n
+	return s
+}
+
+// WithClock overrides the time source (tests / deterministic sweeps).
+func (s *Service) WithClock(now func() time.Time) *Service {
+	if now != nil {
+		s.now = now
+	}
+	return s
+}
+
+// SetNow is a test helper that freezes the service clock.
+func (s *Service) SetNow(t time.Time) {
+	s.now = func() time.Time { return t }
 }
 
 type CreateInput struct {
@@ -80,13 +100,30 @@ func toDTO(r domain.Recording) RecordingDTO {
 
 func RecordingDTOFrom(r domain.Recording) RecordingDTO { return toDTO(r) }
 
+var allowedUploadTypes = map[string]bool{
+	"video/webm":      true,
+	"video/mp4":       true,
+	"video/quicktime": true,
+}
+
+func normalizeContentType(ct string) string {
+	ct = strings.ToLower(strings.TrimSpace(ct))
+	if i := strings.IndexByte(ct, ';'); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	return ct
+}
+
 func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, error) {
 	if err := s.access.EnsureMember(ctx, in.UserID, in.ProjectID); err != nil {
 		return CreateResult{}, err
 	}
-	ct := strings.TrimSpace(in.ContentType)
+	ct := normalizeContentType(in.ContentType)
 	if ct == "" {
 		ct = "application/octet-stream"
+	}
+	if ct != "application/octet-stream" && !allowedUploadTypes[ct] {
+		return CreateResult{}, domain.ErrInvalidInput
 	}
 	ext := extensionFor(ct, in.Filename)
 	id := uuid.New()
@@ -137,11 +174,19 @@ func (s *Service) Complete(ctx context.Context, userID, projectID, recordingID u
 		return RecordingDTO{}, domain.ErrIllegalTransition
 	}
 
-	size, _, err := s.storage.Stat(ctx, rec.StorageKey)
+	meta, err := s.storage.Stat(ctx, rec.StorageKey)
 	if err != nil {
 		return RecordingDTO{}, domain.ErrObjectMissing
 	}
+	if s.uploadMaxBytes > 0 && meta.Size > s.uploadMaxBytes {
+		return RecordingDTO{}, domain.ErrObjectTooLarge
+	}
+	if err := validateUploadedContentType(rec.ContentType, meta.ContentType); err != nil {
+		return RecordingDTO{}, err
+	}
+	size := meta.Size
 	rec.ByteSize = &size
+	rec.Checksum = strings.Trim(meta.ETag, `"`)
 	if err := rec.Transition(domain.StatusUploaded, s.now()); err != nil {
 		return RecordingDTO{}, err
 	}
@@ -169,6 +214,21 @@ func (s *Service) Complete(ctx context.Context, userID, projectID, recordingID u
 		return RecordingDTO{}, err
 	}
 	return toDTO(updated), nil
+}
+
+func validateUploadedContentType(expected, actual string) error {
+	expected = normalizeContentType(expected)
+	actual = normalizeContentType(actual)
+	if actual == "" || actual == "application/octet-stream" {
+		return nil
+	}
+	if expected == "" || expected == "application/octet-stream" {
+		return nil
+	}
+	if actual != expected {
+		return domain.ErrContentTypeMismatch
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, userID, projectID, recordingID uuid.UUID) (RecordingDTO, error) {
@@ -247,4 +307,57 @@ func extensionFor(contentType, filename string) string {
 	default:
 		return ".bin"
 	}
+}
+
+// SweepAbandonedUploads deletes stale UPLOADING rows (and best-effort objects).
+// Returns how many DB rows were removed.
+func (s *Service) SweepAbandonedUploads(ctx context.Context, olderThan time.Duration, limit int) (int, error) {
+	if olderThan <= 0 {
+		return 0, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	cutoff := s.now().Add(-olderThan)
+	rows, err := s.recordings.ListAbandonedUploading(ctx, cutoff, limit)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, rec := range rows {
+		if err := s.recordings.DeleteIfStatus(ctx, rec.ID, domain.StatusUploading); err != nil {
+			if err == domain.ErrNotFound {
+				continue
+			}
+			return removed, err
+		}
+		removed++
+		if rec.StorageKey != "" && s.storage != nil {
+			_ = s.storage.Delete(ctx, rec.StorageKey)
+		}
+	}
+	return removed, nil
+}
+
+// Delete removes a recording (owner-only). DB cascade first; object prefix cleanup is best-effort.
+func (s *Service) Delete(ctx context.Context, userID, projectID, recordingID uuid.UUID) error {
+	if err := s.access.EnsureOwner(ctx, userID, projectID); err != nil {
+		return err
+	}
+	rec, err := s.recordings.Get(ctx, recordingID)
+	if err != nil {
+		return err
+	}
+	if rec.ProjectID != projectID {
+		return domain.ErrNotFound
+	}
+	if err := s.recordings.Delete(ctx, recordingID); err != nil {
+		return err
+	}
+	if s.storage == nil {
+		return nil
+	}
+	prefix := fmt.Sprintf("projects/%s/recordings/%s/", projectID.String(), recordingID.String())
+	_ = s.storage.DeletePrefix(ctx, prefix)
+	return nil
 }
