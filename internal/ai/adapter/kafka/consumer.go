@@ -78,8 +78,13 @@ func (c *Consumer) Run(ctx context.Context) error {
 			continue
 		}
 
-		msgCtx := logging.ContextWithCorrelationID(ctx, evt.CorrelationID)
-		msgCtx = logging.ContextWithRecordingID(msgCtx, evt.RecordingID)
+		msgCtx := logging.ContextWithCorrelationID(ctx, pkafka.CorrelationID(msg, evt.CorrelationID))
+		if rid := pkafka.HeaderValue(msg, pkafka.HeaderRecordingID); rid != "" {
+			msgCtx = logging.ContextWithRecordingID(msgCtx, rid)
+		} else {
+			msgCtx = logging.ContextWithRecordingID(msgCtx, evt.RecordingID)
+		}
+		evt.CorrelationID = logging.CorrelationIDFromContext(msgCtx)
 		log := logging.WithContext(msgCtx, c.log)
 		log.Info("processing FramesExtracted",
 			"recording_id", evt.RecordingID,
@@ -92,7 +97,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 				spanCtx, span := tr.Start(attemptCtx, "ai.HandleFramesExtracted")
 				span.SetAttributes(
 					attribute.String("recording_id", evt.RecordingID),
-					attribute.String("correlation_id", evt.CorrelationID),
+					attribute.String("correlation_id", logging.CorrelationIDFromContext(msgCtx)),
 				)
 				hErr := c.svc.HandleFramesExtracted(spanCtx, evt)
 				if domain.IsInFlight(hErr) {
