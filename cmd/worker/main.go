@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -126,12 +127,19 @@ func main() {
 	kafkaPub := platformkafka.NewPublisher(cfg.Kafka)
 	defer kafkaPub.Close()
 	relay := uploadoutbox.NewRelay(uploadpg.NewOutboxRepo(pool), kafkaPub, log)
-	go relay.Run(ctx)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		relay.Run(ctx)
+	}()
 	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
 
 	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub)
-	defer mediaConsumer.Close()
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := mediaConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("media consumer stopped", "error", err)
 			stop()
@@ -139,8 +147,9 @@ func main() {
 	}()
 
 	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics, kafkaPub)
-	defer aiConsumer.Close()
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if err := aiConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("ai consumer stopped", "error", err)
 			stop()
@@ -183,7 +192,23 @@ func main() {
 			log.Error("server error", "error", err)
 			os.Exit(1)
 		}
+		stop()
 	}
+
+	drainDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(drainDone)
+	}()
+	select {
+	case <-drainDone:
+		log.Info("pipeline drained")
+	case <-time.After(config.ShutdownTimeout()):
+		log.Warn("pipeline drain timed out")
+	}
+
+	_ = mediaConsumer.Close()
+	_ = aiConsumer.Close()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout())
 	defer cancel()
