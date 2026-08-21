@@ -338,3 +338,26 @@ func (s *Service) SweepAbandonedUploads(ctx context.Context, olderThan time.Dura
 	}
 	return removed, nil
 }
+
+// Delete removes a recording (owner-only). DB cascade first; object prefix cleanup is best-effort.
+func (s *Service) Delete(ctx context.Context, userID, projectID, recordingID uuid.UUID) error {
+	if err := s.access.EnsureOwner(ctx, userID, projectID); err != nil {
+		return err
+	}
+	rec, err := s.recordings.Get(ctx, recordingID)
+	if err != nil {
+		return err
+	}
+	if rec.ProjectID != projectID {
+		return domain.ErrNotFound
+	}
+	if err := s.recordings.Delete(ctx, recordingID); err != nil {
+		return err
+	}
+	if s.storage == nil {
+		return nil
+	}
+	prefix := fmt.Sprintf("projects/%s/recordings/%s/", projectID.String(), recordingID.String())
+	_ = s.storage.DeletePrefix(ctx, prefix)
+	return nil
+}

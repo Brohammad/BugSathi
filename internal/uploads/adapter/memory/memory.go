@@ -182,6 +182,16 @@ func (r *RecordingRepo) DeleteIfStatus(_ context.Context, id uuid.UUID, status d
 	return nil
 }
 
+func (r *RecordingRepo) Delete(_ context.Context, id uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.byID[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(r.byID, id)
+	return nil
+}
+
 type Storage struct {
 	mu   sync.Mutex
 	objs map[string][]byte

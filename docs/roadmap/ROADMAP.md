@@ -125,7 +125,7 @@
 ### M20 — Object cleanup on project delete
 - `DeletePrefix` on MinIO (+ memory) removes `projects/{id}/…` after DB cascade
 - HTTP delete stays 204 if MinIO cleanup fails (logged); missing keys are OK
-- Abandoned `UPLOADING` GC deferred; no per-recording delete API yet
+- Abandoned `UPLOADING` GC via `UPLOAD_ABANDONED_TTL`; per-recording delete API for owners
 - ADR 0026
 
 ### M21 — Trusted proxy & production guards

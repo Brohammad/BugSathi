@@ -148,6 +148,17 @@ func (r *RecordingRepo) DeleteIfStatus(ctx context.Context, id uuid.UUID, status
 	return nil
 }
 
+func (r *RecordingRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	ct, err := r.pool.Exec(ctx, `DELETE FROM recordings WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 type OutboxRepo struct {
 	pool *pgxpool.Pool
 }

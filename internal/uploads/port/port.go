@@ -20,6 +20,8 @@ type RecordingRepository interface {
 	ListAbandonedUploading(ctx context.Context, cutoff time.Time, limit int) ([]domain.Recording, error)
 	// DeleteIfStatus deletes the row only when it still matches status (CAS).
 	DeleteIfStatus(ctx context.Context, id uuid.UUID, status domain.Status) error
+	// Delete removes the recording row (cascades analyses/reports/artifacts).
+	Delete(ctx context.Context, id uuid.UUID) error
 }
 
 type OutboxRepository interface {
@@ -43,6 +45,7 @@ type ObjectStorage interface {
 	PresignPut(ctx context.Context, key, contentType string, expiry time.Duration) (url string, err error)
 	Stat(ctx context.Context, key string) (ObjectMeta, error)
 	Delete(ctx context.Context, key string) error
+	DeletePrefix(ctx context.Context, prefix string) error
 }
 
 // ObjectMeta is the subset of object attributes used on upload complete.

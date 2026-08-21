@@ -270,3 +270,52 @@ func TestSweepAbandonedUploads(t *testing.T) {
 		t.Fatal("object should be deleted")
 	}
 }
+
+func TestDeleteRecordingOwnerOnly(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessOK{}, time.Minute)
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "video/webm", []byte("vid"))
+	frameKey := "projects/" + project.String() + "/recordings/" + created.Recording.ID.String() + "/frames/0.jpg"
+	store.Put(frameKey, "image/jpeg", []byte("f"))
+
+	if err := svc.Delete(ctx, user, project, created.Recording.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := recs.Get(ctx, created.Recording.ID); err != domain.ErrNotFound {
+		t.Fatalf("recording still present: %v", err)
+	}
+	if store.Has(created.Recording.StorageKey) || store.Has(frameKey) {
+		t.Fatal("recording prefix objects should be gone")
+	}
+}
+
+func TestDeleteRecordingRequiresOwner(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	ownerSvc := service.New(recs, store, memory.AccessOK{}, time.Minute)
+	memberSvc := service.New(recs, store, memory.AccessMemberOnly{}, time.Minute)
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := ownerSvc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := memberSvc.Delete(ctx, user, project, created.Recording.ID); err != domain.ErrForbidden {
+		t.Fatalf("member delete: %v", err)
+	}
+}
