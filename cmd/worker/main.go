@@ -114,6 +114,7 @@ func main() {
 	for _, topic := range []string{
 		mediadomain.TopicRecordingUploaded,
 		mediadomain.TopicFramesExtracted,
+		aidomain.TopicAnalysisStarted,
 		aidomain.TopicAnalysisCompleted,
 		aidomain.TopicReportGenerated,
 		sharingdomain.TopicShareCreated,

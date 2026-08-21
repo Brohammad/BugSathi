@@ -92,6 +92,35 @@ func (s *Store) TryClaimRunning(_ context.Context, recordingID, projectID uuid.U
 	return a, nil
 }
 
+func (s *Store) MarkGenerating(_ context.Context, recordingID, projectID uuid.UUID, corr string, at time.Time) (domain.Report, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rep, ok := s.reports[recordingID]
+	if !ok {
+		rep = domain.Report{
+			ID: uuid.New(), RecordingID: recordingID, ProjectID: projectID,
+			Status: domain.ReportGenerating, AIStatus: string(domain.AnalysisRunning),
+			PromptVersion: domain.PromptVersion, CreatedAt: at, UpdatedAt: at,
+		}
+	} else {
+		rep.Status = domain.ReportGenerating
+		rep.AIStatus = string(domain.AnalysisRunning)
+		rep.PromptVersion = domain.PromptVersion
+		rep.UpdatedAt = at
+	}
+	s.reports[recordingID] = rep
+	payload, _ := json.Marshal(domain.AnalysisStartedEvent{
+		SchemaVersion: 1, RecordingID: recordingID.String(), ProjectID: projectID.String(),
+		ReportID: rep.ID.String(), PromptVersion: domain.PromptVersion,
+		CorrelationID: corr, OccurredAt: at.UTC(),
+	})
+	s.outbox = append(s.outbox, port.OutboxEvent{
+		Topic: domain.TopicAnalysisStarted, PartitionKey: recordingID.String(),
+		Payload: payload, CorrelationID: corr,
+	})
+	return rep, nil
+}
+
 func (s *Store) TouchRunning(_ context.Context, recordingID uuid.UUID, promptVersion string, at time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -140,11 +169,18 @@ func (s *Store) FailAnalysis(_ context.Context, recordingID uuid.UUID, promptVer
 	a.UpdatedAt = at
 	s.analyses[key(recordingID, promptVersion)] = a
 	if meta, ok := s.meta[recordingID]; ok {
-		s.reports[recordingID] = domain.Report{
-			ID: uuid.New(), RecordingID: recordingID, ProjectID: meta.ProjectID,
-			Status: domain.ReportFailed, AIStatus: string(domain.AnalysisFailed),
-			PromptVersion: promptVersion, CreatedAt: at, UpdatedAt: at,
+		rep, exists := s.reports[recordingID]
+		if !exists {
+			rep = domain.Report{
+				ID: uuid.New(), RecordingID: recordingID, ProjectID: meta.ProjectID,
+				CreatedAt: at,
+			}
 		}
+		rep.Status = domain.ReportFailed
+		rep.AIStatus = string(domain.AnalysisFailed)
+		rep.PromptVersion = promptVersion
+		rep.UpdatedAt = at
+		s.reports[recordingID] = rep
 	}
 	return nil
 }

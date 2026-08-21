@@ -90,6 +90,10 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		return err
 	}
 
+	if _, err := s.store.MarkGenerating(ctx, recordingID, projectID, evt.CorrelationID, now); err != nil {
+		return err
+	}
+
 	jobCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go s.renewLease(jobCtx, recordingID, domain.PromptVersion)
@@ -120,6 +124,10 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		return err
 	}
 	now = s.now()
+	reportID := uuid.New()
+	if existing, err := s.store.GetReportByRecording(ctx, recordingID); err == nil {
+		reportID = existing.ID
+	}
 	analysis := domain.Analysis{
 		ID: uuid.New(), RecordingID: recordingID, ProjectID: projectID,
 		PromptVersion: domain.PromptVersion, Status: domain.AnalysisCompleted,
@@ -128,7 +136,7 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		CreatedAt: now, UpdatedAt: now,
 	}
 	report := domain.Report{
-		ID: uuid.New(), RecordingID: recordingID, ProjectID: projectID,
+		ID: reportID, RecordingID: recordingID, ProjectID: projectID,
 		Status: domain.ReportReady, Title: result.Title, Summary: result.Summary,
 		Steps: stepsJSON, AIStatus: string(domain.AnalysisCompleted),
 		PromptVersion: domain.PromptVersion, CreatedAt: now, UpdatedAt: now,

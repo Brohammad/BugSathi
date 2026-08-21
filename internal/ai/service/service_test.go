@@ -40,8 +40,11 @@ func TestHandleFramesExtractedMock(t *testing.T) {
 		t.Fatalf("report=%+v ok=%v", rep, ok)
 	}
 	firstReportID := rep.ID
-	if len(store.Outbox()) != 2 {
-		t.Fatalf("outbox=%d", len(store.Outbox()))
+	if len(store.Outbox()) != 3 {
+		t.Fatalf("outbox=%d want AnalysisStarted+Completed+Generated", len(store.Outbox()))
+	}
+	if store.Outbox()[0].Topic != domain.TopicAnalysisStarted {
+		t.Fatalf("first topic=%s", store.Outbox()[0].Topic)
 	}
 
 	// idempotent replay must reuse the same report_id in outbox payloads
@@ -55,10 +58,10 @@ func TestHandleFramesExtractedMock(t *testing.T) {
 	if !ok || repAfter.ID != firstReportID {
 		t.Fatalf("report id changed: before=%s after=%+v", firstReportID, repAfter)
 	}
-	if len(store.Outbox()) < 4 {
+	if len(store.Outbox()) < 5 {
 		t.Fatalf("expected more outbox events on replay, got %d", len(store.Outbox()))
 	}
-	for i, ev := range store.Outbox()[2:] {
+	for i, ev := range store.Outbox()[3:] {
 		var payload struct {
 			ReportID string `json:"report_id"`
 		}
@@ -66,7 +69,7 @@ func TestHandleFramesExtractedMock(t *testing.T) {
 			t.Fatal(err)
 		}
 		if payload.ReportID != firstReportID.String() {
-			t.Fatalf("outbox[%d] report_id=%q want %q", i+2, payload.ReportID, firstReportID)
+			t.Fatalf("outbox[%d] report_id=%q want %q", i+3, payload.ReportID, firstReportID)
 		}
 	}
 }

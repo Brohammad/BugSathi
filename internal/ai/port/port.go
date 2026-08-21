@@ -22,6 +22,8 @@ type Store interface {
 	// treat completed via GetAnalysis).
 	TryClaimRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time) (domain.Analysis, error)
 	TouchRunning(ctx context.Context, recordingID uuid.UUID, promptVersion string, at time.Time) error
+	// MarkGenerating upserts the report as GENERATING and emits AnalysisStarted.
+	MarkGenerating(ctx context.Context, recordingID, projectID uuid.UUID, corr string, at time.Time) (domain.Report, error)
 	CompleteAnalysis(ctx context.Context, analysis domain.Analysis, report domain.Report, events []OutboxEvent, at time.Time) error
 	FailAnalysis(ctx context.Context, recordingID uuid.UUID, promptVersion, msg string, at time.Time) error
 	GetReportByRecording(ctx context.Context, recordingID uuid.UUID) (domain.Report, error)

@@ -65,6 +65,54 @@ func (s *Store) TouchRunning(ctx context.Context, recordingID uuid.UUID, promptV
 	return err
 }
 
+func (s *Store) MarkGenerating(ctx context.Context, recordingID, projectID uuid.UUID, corr string, at time.Time) (domain.Report, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	reportID := uuid.New()
+	const upsert = `
+		INSERT INTO reports (id, recording_id, project_id, status, ai_status, prompt_version, created_at, updated_at)
+		VALUES ($1,$2,$3,'GENERATING','running',$4,$5,$5)
+		ON CONFLICT (recording_id) DO UPDATE SET
+			status = 'GENERATING',
+			ai_status = 'running',
+			prompt_version = EXCLUDED.prompt_version,
+			updated_at = EXCLUDED.updated_at
+		RETURNING id, recording_id, project_id, status, title, summary, steps, ai_status, prompt_version, created_at, updated_at`
+	var out domain.Report
+	var status string
+	err = tx.QueryRow(ctx, upsert, reportID, recordingID, projectID, domain.PromptVersion, at).Scan(
+		&out.ID, &out.RecordingID, &out.ProjectID, &status,
+		&out.Title, &out.Summary, &out.Steps, &out.AIStatus, &out.PromptVersion,
+		&out.CreatedAt, &out.UpdatedAt,
+	)
+	if err != nil {
+		return domain.Report{}, err
+	}
+	out.Status = domain.ReportStatus(status)
+
+	payload, err := json.Marshal(domain.AnalysisStartedEvent{
+		SchemaVersion: 1, RecordingID: recordingID.String(), ProjectID: projectID.String(),
+		ReportID: out.ID.String(), PromptVersion: domain.PromptVersion,
+		CorrelationID: corr, OccurredAt: at.UTC(),
+	})
+	if err != nil {
+		return domain.Report{}, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO outbox (topic, partition_key, payload, correlation_id)
+		VALUES ($1,$2,$3,$4)`, domain.TopicAnalysisStarted, recordingID.String(), payload, corr); err != nil {
+		return domain.Report{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.Report{}, err
+	}
+	return out, nil
+}
+
 func (s *Store) CompleteAnalysis(ctx context.Context, analysis domain.Analysis, report domain.Report, events []port.OutboxEvent, at time.Time) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {

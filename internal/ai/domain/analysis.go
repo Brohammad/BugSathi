@@ -26,6 +26,7 @@ func IsInFlight(err error) bool {
 const PromptVersion = "prompt_v1"
 
 const (
+	TopicAnalysisStarted   = "bugsathi.analysis.started"
 	TopicAnalysisCompleted = "bugsathi.analysis.completed"
 	TopicReportGenerated   = "bugsathi.report.generated"
 )
@@ -129,6 +130,16 @@ func NormalizeAnalysisResult(r AnalysisResult) AnalysisResult {
 		}
 	}
 	return out
+}
+
+type AnalysisStartedEvent struct {
+	SchemaVersion int       `json:"schema_version"`
+	RecordingID   string    `json:"recording_id"`
+	ProjectID     string    `json:"project_id"`
+	ReportID      string    `json:"report_id"`
+	PromptVersion string    `json:"prompt_version"`
+	CorrelationID string    `json:"correlation_id"`
+	OccurredAt    time.Time `json:"occurred_at"`
 }
 
 type AnalysisCompletedEvent struct {
