@@ -171,6 +171,12 @@
 - Per-recording delete API
 - ADR 0033
 
+### M28 — Deferred audit follow-ups
+- Durable Kafka retry attempts in Postgres (`kafka_retry_attempts`)
+- `AnalysisStarted` observability consumer + metric
+- Lifecycle docs aligned with upload GC / recording delete
+- ADR 0034
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |

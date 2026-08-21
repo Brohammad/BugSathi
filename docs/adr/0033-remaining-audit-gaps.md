@@ -29,8 +29,8 @@ Ship Milestone 27 as discrete commits:
 
 **Positive** — closes the remaining audit checklist items without bundling;
 operators get GC, drain, and clearer rate-limit behavior.  
-**Negative** — `AnalysisStarted` is still emit-only (no dedicated consumer);
-DLQ attempt counters remain in-process (ADR 0023).
+**Negative** — `AnalysisStarted` was emit-only until M28; DLQ attempt durability
+and an observability consumer land in ADR 0034. Multimodal OpenAI remains deferred.
 
 ## Alternatives
 
