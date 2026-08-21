@@ -201,6 +201,16 @@ func main() {
 		}
 	}()
 
+	startedConsumer := aikafka.NewStartedConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, log, metrics)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := startedConsumer.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("analysis started consumer stopped", "error", err)
+			stop()
+		}
+	}()
+
 	healthHandler := health.NewHandler()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthHandler.Healthz)
@@ -254,6 +264,7 @@ func main() {
 
 	_ = mediaConsumer.Close()
 	_ = aiConsumer.Close()
+	_ = startedConsumer.Close()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), config.ShutdownTimeout())
 	defer cancel()
