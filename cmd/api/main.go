@@ -243,7 +243,7 @@ func main() {
 		Addr: cfg.HTTPAddr,
 		Handler: httpx.RequestIDs(
 			httpx.CORS(cfg.Hardening.CORSOrigins,
-				httpx.SecurityHeaders(core),
+				httpx.SecurityHeaders(httpx.IsProduction(cfg.AppEnv), core),
 			),
 		),
 	}
