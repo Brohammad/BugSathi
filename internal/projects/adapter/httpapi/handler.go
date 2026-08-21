@@ -30,6 +30,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, protect ProtectFunc) {
 	mux.Handle("DELETE /v1/projects/{id}", protect(http.HandlerFunc(h.Delete)))
 	mux.Handle("GET /v1/projects/{id}/members", protect(http.HandlerFunc(h.ListMembers)))
 	mux.Handle("POST /v1/projects/{id}/members", protect(http.HandlerFunc(h.AddMember)))
+	mux.Handle("DELETE /v1/projects/{id}/members/{userID}", protect(http.HandlerFunc(h.RemoveMember)))
 }
 
 type createRequest struct {
@@ -201,6 +202,29 @@ func (h *Handler) AddMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"member": m})
 }
 
+func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
+	uid, ok := authhttp.UserIDFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	pid, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project id")
+		return
+	}
+	memberID, err := uuid.Parse(r.PathValue("userID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	if err := h.svc.RemoveMember(r.Context(), uid, pid, memberID); err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func writeDomainError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrInvalidName), errors.Is(err, domain.ErrInvalidRole):
@@ -209,7 +233,7 @@ func writeDomainError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "not found")
 	case errors.Is(err, domain.ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden")
-	case errors.Is(err, domain.ErrAlreadyMember):
+	case errors.Is(err, domain.ErrAlreadyMember), errors.Is(err, domain.ErrLastOwner):
 		writeError(w, http.StatusConflict, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "internal error")

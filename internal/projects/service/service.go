@@ -149,9 +149,6 @@ func (s *Service) AddMember(ctx context.Context, actorID, projectID, memberUserI
 	if err != nil {
 		return MemberDTO{}, err
 	}
-	if role == domain.RoleOwner {
-		// MVP: only one path to owner is create; adding owners allowed but keep simple
-	}
 	m := domain.Member{
 		ProjectID: projectID,
 		UserID:    memberUserID,
@@ -162,6 +159,26 @@ func (s *Service) AddMember(ctx context.Context, actorID, projectID, memberUserI
 		return MemberDTO{}, err
 	}
 	return MemberDTO{UserID: m.UserID, Role: m.Role, CreatedAt: m.CreatedAt}, nil
+}
+
+func (s *Service) RemoveMember(ctx context.Context, actorID, projectID, memberUserID uuid.UUID) error {
+	if _, err := s.requireOwner(ctx, projectID, actorID); err != nil {
+		return err
+	}
+	target, err := s.repo.GetMembership(ctx, projectID, memberUserID)
+	if err != nil {
+		return err
+	}
+	if target.Role.IsOwner() {
+		n, err := s.repo.CountOwners(ctx, projectID)
+		if err != nil {
+			return err
+		}
+		if n <= 1 {
+			return domain.ErrLastOwner
+		}
+	}
+	return s.repo.RemoveMember(ctx, projectID, memberUserID)
 }
 
 func (s *Service) ListMembers(ctx context.Context, userID, projectID uuid.UUID, page pagination.Page) (pagination.Result[MemberDTO], error) {
