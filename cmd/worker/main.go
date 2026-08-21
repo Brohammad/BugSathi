@@ -39,6 +39,8 @@ import (
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
+	uploadmemaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/memory"
+	uploadsvc "github.com/Brohammad/BugSathi/internal/uploads/service"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -135,6 +137,47 @@ func main() {
 		relay.Run(ctx)
 	}()
 	go observability.NewOutboxLagPoller(pool, metrics).Run(ctx)
+
+	if gc := cfg.Hardening.UploadGC; gc.TTL > 0 {
+		uploadGC := uploadsvc.New(
+			uploadpg.NewRecordingRepo(pool),
+			objectStore,
+			uploadmemaccess.AccessOK{},
+			15*time.Minute,
+		)
+		interval := gc.Interval
+		if interval <= 0 {
+			interval = 15 * time.Minute
+		}
+		batch := gc.Batch
+		if batch <= 0 {
+			batch = 50
+		}
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			run := func() {
+				n, err := uploadGC.SweepAbandonedUploads(ctx, gc.TTL, batch)
+				if err != nil && ctx.Err() == nil {
+					log.Error("upload gc failed", "error", err)
+					return
+				}
+				if n > 0 {
+					log.Info("upload gc swept abandoned uploading", "count", n)
+				}
+			}
+			run()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					run()
+				}
+			}
+		}()
+		log.Info("upload abandoned GC enabled", "ttl", gc.TTL, "interval", interval, "batch", batch)
+	}
 
 	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub)
 	wg.Add(1)

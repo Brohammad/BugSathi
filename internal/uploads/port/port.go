@@ -16,6 +16,10 @@ type RecordingRepository interface {
 	CompleteWithOutbox(ctx context.Context, rec domain.Recording, eventTopic, partitionKey string, payload []byte, correlationID string) (domain.Recording, error)
 	// InsertOutbox appends an outbox row without changing recording status (reprocess).
 	InsertOutbox(ctx context.Context, eventTopic, partitionKey string, payload []byte, correlationID string) error
+	// ListAbandonedUploading returns UPLOADING rows with updated_at older than cutoff.
+	ListAbandonedUploading(ctx context.Context, cutoff time.Time, limit int) ([]domain.Recording, error)
+	// DeleteIfStatus deletes the row only when it still matches status (CAS).
+	DeleteIfStatus(ctx context.Context, id uuid.UUID, status domain.Status) error
 }
 
 type OutboxRepository interface {
@@ -38,6 +42,7 @@ type OutboxMessage struct {
 type ObjectStorage interface {
 	PresignPut(ctx context.Context, key, contentType string, expiry time.Duration) (url string, err error)
 	Stat(ctx context.Context, key string) (ObjectMeta, error)
+	Delete(ctx context.Context, key string) error
 }
 
 // ObjectMeta is the subset of object attributes used on upload complete.

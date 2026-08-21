@@ -47,6 +47,19 @@ func (s *Service) WithUploadMaxBytes(n int64) *Service {
 	return s
 }
 
+// WithClock overrides the time source (tests / deterministic sweeps).
+func (s *Service) WithClock(now func() time.Time) *Service {
+	if now != nil {
+		s.now = now
+	}
+	return s
+}
+
+// SetNow is a test helper that freezes the service clock.
+func (s *Service) SetNow(t time.Time) {
+	s.now = func() time.Time { return t }
+}
+
 type CreateInput struct {
 	ProjectID     uuid.UUID
 	UserID        uuid.UUID
@@ -294,4 +307,34 @@ func extensionFor(contentType, filename string) string {
 	default:
 		return ".bin"
 	}
+}
+
+// SweepAbandonedUploads deletes stale UPLOADING rows (and best-effort objects).
+// Returns how many DB rows were removed.
+func (s *Service) SweepAbandonedUploads(ctx context.Context, olderThan time.Duration, limit int) (int, error) {
+	if olderThan <= 0 {
+		return 0, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	cutoff := s.now().Add(-olderThan)
+	rows, err := s.recordings.ListAbandonedUploading(ctx, cutoff, limit)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, rec := range rows {
+		if err := s.recordings.DeleteIfStatus(ctx, rec.ID, domain.StatusUploading); err != nil {
+			if err == domain.ErrNotFound {
+				continue
+			}
+			return removed, err
+		}
+		removed++
+		if rec.StorageKey != "" && s.storage != nil {
+			_ = s.storage.Delete(ctx, rec.StorageKey)
+		}
+	}
+	return removed, nil
 }

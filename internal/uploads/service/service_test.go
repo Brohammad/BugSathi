@@ -229,3 +229,44 @@ func TestReprocessUploadingIllegal(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestSweepAbandonedUploads(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessOK{}, time.Minute)
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.UTC)
+	svc.SetNow(now)
+
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "video/webm", []byte("partial"))
+
+	// Still fresh — should not sweep.
+	n, err := svc.SweepAbandonedUploads(ctx, time.Hour, 10)
+	if err != nil || n != 0 {
+		t.Fatalf("fresh sweep n=%d err=%v", n, err)
+	}
+
+	rec, _ := recs.Get(ctx, created.Recording.ID)
+	rec.UpdatedAt = now.Add(-2 * time.Hour)
+	_, _ = recs.Update(ctx, rec)
+
+	n, err = svc.SweepAbandonedUploads(ctx, time.Hour, 10)
+	if err != nil || n != 1 {
+		t.Fatalf("stale sweep n=%d err=%v", n, err)
+	}
+	if _, err := recs.Get(ctx, created.Recording.ID); err != domain.ErrNotFound {
+		t.Fatalf("recording still present: %v", err)
+	}
+	if store.Has(created.Recording.StorageKey) {
+		t.Fatal("object should be deleted")
+	}
+}

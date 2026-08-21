@@ -146,6 +146,42 @@ func (r *RecordingRepo) InsertOutbox(
 	return nil
 }
 
+func (r *RecordingRepo) ListAbandonedUploading(_ context.Context, cutoff time.Time, limit int) ([]domain.Recording, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 {
+		limit = 50
+	}
+	var out []domain.Recording
+	for _, rec := range r.byID {
+		if rec.Status != domain.StatusUploading {
+			continue
+		}
+		if !rec.UpdatedAt.Before(cutoff) {
+			continue
+		}
+		out = append(out, rec)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func (r *RecordingRepo) DeleteIfStatus(_ context.Context, id uuid.UUID, status domain.Status) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	rec, ok := r.byID[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	if rec.Status != status {
+		return domain.ErrNotFound
+	}
+	delete(r.byID, id)
+	return nil
+}
+
 type Storage struct {
 	mu   sync.Mutex
 	objs map[string][]byte

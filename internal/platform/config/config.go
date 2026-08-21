@@ -122,6 +122,14 @@ type HardeningConfig struct {
 	CORSOrigins    []string
 	RateLimit      RateLimitConfig
 	KafkaRetry     KafkaRetryConfig
+	UploadGC       UploadGCConfig
+}
+
+// UploadGCConfig sweeps abandoned UPLOADING sessions (0 TTL disables).
+type UploadGCConfig struct {
+	TTL      time.Duration
+	Interval time.Duration
+	Batch    int
 }
 
 type RateLimitConfig struct {
@@ -226,6 +234,11 @@ func Load() (Config, error) {
 				Base:        getenvDuration("KAFKA_RETRY_BASE", time.Second),
 				Max:         getenvDuration("KAFKA_RETRY_MAX", 30*time.Second),
 				MaxAttempts: getenvInt("KAFKA_RETRY_MAX_ATTEMPTS", 5),
+			},
+			UploadGC: UploadGCConfig{
+				TTL:      getenvDuration("UPLOAD_ABANDONED_TTL", 24*time.Hour),
+				Interval: getenvDuration("UPLOAD_GC_INTERVAL", 15*time.Minute),
+				Batch:    getenvInt("UPLOAD_GC_BATCH", 50),
 			},
 		},
 	}

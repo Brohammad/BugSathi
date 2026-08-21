@@ -21,8 +21,9 @@ cascade.
    Retrying after a DB success cannot re-find the project; failing the request
    would strand the client with a deleted project and a confusing error.
 3. Missing keys are treated as success so cleanup is idempotent.
-4. Abandoned `UPLOADING` sessions whose project still exists are **out of
-   scope** (lifecycle sweeper later; ADR 0003 / 0013).
+4. Abandoned `UPLOADING` sessions whose project still exists are swept by the
+   worker when `UPLOAD_ABANDONED_TTL` is set (default 24h): DB row deleted if
+   still `UPLOADING`, then best-effort object delete.
 
 ## Consequences
 

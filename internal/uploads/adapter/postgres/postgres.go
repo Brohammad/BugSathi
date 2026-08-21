@@ -109,6 +109,45 @@ func (r *RecordingRepo) InsertOutbox(
 	return err
 }
 
+func (r *RecordingRepo) ListAbandonedUploading(ctx context.Context, cutoff time.Time, limit int) ([]domain.Recording, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	const q = `
+		SELECT id, project_id, created_by, status, storage_key, content_type,
+			byte_size, checksum, metadata, correlation_id, created_at, updated_at
+		FROM recordings
+		WHERE status = 'UPLOADING' AND updated_at < $1
+		ORDER BY updated_at ASC
+		LIMIT $2`
+	rows, err := r.pool.Query(ctx, q, cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Recording
+	for rows.Next() {
+		rec, err := scanRecording(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rec)
+	}
+	return out, rows.Err()
+}
+
+func (r *RecordingRepo) DeleteIfStatus(ctx context.Context, id uuid.UUID, status domain.Status) error {
+	ct, err := r.pool.Exec(ctx, `
+		DELETE FROM recordings WHERE id = $1 AND status = $2`, id, string(status))
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 type OutboxRepo struct {
 	pool *pgxpool.Pool
 }
