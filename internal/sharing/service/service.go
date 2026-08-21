@@ -73,7 +73,7 @@ func toListDTO(s domain.ShareLink) ShareDTO {
 }
 
 func (s *Service) Create(ctx context.Context, userID, projectID, reportID uuid.UUID, expiresIn *time.Duration) (ShareDTO, error) {
-	if err := s.access.EnsureMember(ctx, userID, projectID); err != nil {
+	if err := s.access.EnsureOwner(ctx, userID, projectID); err != nil {
 		return ShareDTO{}, domain.ErrForbidden
 	}
 	if _, err := s.reports.GetPublicPayload(ctx, projectID, reportID); err != nil {
@@ -140,7 +140,7 @@ func (s *Service) List(ctx context.Context, userID, projectID, reportID uuid.UUI
 }
 
 func (s *Service) Revoke(ctx context.Context, userID, projectID, shareID uuid.UUID) error {
-	if err := s.access.EnsureMember(ctx, userID, projectID); err != nil {
+	if err := s.access.EnsureOwner(ctx, userID, projectID); err != nil {
 		return domain.ErrForbidden
 	}
 	return s.repo.Revoke(ctx, projectID, shareID, s.now())
