@@ -47,6 +47,7 @@ func NewConsumer(
 		MaxWait:        time.Second,
 		CommitInterval: 0,
 		StartOffset:    kafkago.FirstOffset,
+		Dialer:         pkafka.Dialer(cfg),
 	})
 	return &Consumer{
 		reader:   r,
