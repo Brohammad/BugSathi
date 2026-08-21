@@ -162,6 +162,15 @@
 - React report page wires SSE (`EventSource` + `access_token` query)
 - ADR 0032
 
+### M27 — Remaining audit gaps (one commit each)
+- Kafka client ID, header correlation restore, worker drain
+- Redis rate-limit fail-closed + capacity alignment
+- Share create/revoke owner-only; project member remove + last-owner guard
+- CSP + production HSTS
+- Abandoned `UPLOADING` GC; `AnalysisStarted` + report `GENERATING`
+- Per-recording delete API
+- ADR 0033
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
