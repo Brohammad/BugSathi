@@ -180,7 +180,8 @@ func main() {
 		log.Info("upload abandoned GC enabled", "ttl", gc.TTL, "interval", interval, "batch", batch)
 	}
 
-	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub)
+	attemptStore := platformkafka.NewPostgresAttemptStore(pool, log)
+	mediaConsumer := mediakafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, mediaService, log, metrics, kafkaPub, attemptStore)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -190,7 +191,7 @@ func main() {
 		}
 	}()
 
-	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics, kafkaPub)
+	aiConsumer := aikafka.NewConsumer(cfg.Kafka, cfg.Hardening.KafkaRetry, aiService, log, metrics, kafkaPub, attemptStore)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()

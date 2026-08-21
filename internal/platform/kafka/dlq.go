@@ -28,7 +28,14 @@ type DeadLetter struct {
 	DeadLetteredAt time.Time       `json:"dead_lettered_at"`
 }
 
-// AttemptTracker counts consecutive failures for a Kafka message identity.
+// AttemptCounter tracks consecutive handler failures for a Kafka message identity.
+// Implementations may be in-process or durable (Postgres).
+type AttemptCounter interface {
+	Inc(topic string, partition int, offset int64) int
+	Clear(topic string, partition int, offset int64)
+}
+
+// AttemptTracker counts consecutive failures in process memory.
 type AttemptTracker struct {
 	mu   sync.Mutex
 	byID map[string]int

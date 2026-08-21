@@ -40,4 +40,5 @@ Envelope fields: `source_topic`, `source_partition`, `source_offset`, `key`, `at
 
 - Reprocess is **owner-only**.
 - Allowed statuses: `FAILED`, `UPLOADED`, `PROCESSING`, `READY`.
-- Attempt counters are in-process; worker restart may allow a few more retries before DLQ.
+- Attempt counters are durable in Postgres (`kafka_retry_attempts`); worker
+  restart continues the same offset's attempt count toward DLQ.

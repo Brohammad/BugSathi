@@ -26,7 +26,7 @@ type Consumer struct {
 	metrics  *observability.Metrics
 	retry    config.KafkaRetryConfig
 	pub      *pkafka.Publisher
-	attempts *pkafka.AttemptTracker
+	attempts pkafka.AttemptCounter
 	closer   func() error
 }
 
@@ -37,7 +37,11 @@ func NewConsumer(
 	log *slog.Logger,
 	metrics *observability.Metrics,
 	pub *pkafka.Publisher,
+	attempts pkafka.AttemptCounter,
 ) *Consumer {
+	if attempts == nil {
+		attempts = pkafka.NewAttemptTracker()
+	}
 	r := kafkago.NewReader(kafkago.ReaderConfig{
 		Brokers:        cfg.Brokers,
 		GroupID:        "bugsathi-media",
@@ -56,7 +60,7 @@ func NewConsumer(
 		metrics:  metrics,
 		retry:    retry,
 		pub:      pub,
-		attempts: pkafka.NewAttemptTracker(),
+		attempts: attempts,
 		closer:   r.Close,
 	}
 }
