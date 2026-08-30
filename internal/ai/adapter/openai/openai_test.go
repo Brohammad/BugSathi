@@ -61,22 +61,29 @@ func TestAnalyzeSendsSelectedFramesAsMultimodalContent(t *testing.T) {
 	}
 	user := mustMap(t, messages[1], "user message")
 	content := mustSlice(t, user["content"], "user content")
-	if len(content) != 3 {
-		t.Fatalf("content items=%d want text+2 images", len(content))
+	if len(content) != 5 {
+		t.Fatalf("content items=%d want prompt+2 labeled images", len(content))
 	}
 	text := mustMap(t, content[0], "text content")
 	if text["type"] != "text" {
 		t.Fatalf("first content=%v", text)
 	}
 	for i, frame := range frames {
-		part := mustMap(t, content[i+1], "image content")
+		label := mustMap(t, content[1+i*2], "frame label")
+		if label["type"] != "text" {
+			t.Fatalf("content[%d] label=%v", 1+i*2, label)
+		}
+		part := mustMap(t, content[2+i*2], "image content")
 		if part["type"] != "image_url" {
-			t.Fatalf("content[%d] type=%v", i+1, part["type"])
+			t.Fatalf("content[%d] type=%v", 2+i*2, part["type"])
 		}
 		imageURL := mustMap(t, part["image_url"], "image_url")
 		want := "data:" + frame.MediaType + ";base64," + base64.StdEncoding.EncodeToString(frame.Data)
 		if imageURL["url"] != want {
-			t.Fatalf("content[%d] url=%q want %q", i+1, imageURL["url"], want)
+			t.Fatalf("content[%d] url=%q want %q", 2+i*2, imageURL["url"], want)
+		}
+		if imageURL["detail"] != "high" {
+			t.Fatalf("content[%d] detail=%q want high", 2+i*2, imageURL["detail"])
 		}
 	}
 }

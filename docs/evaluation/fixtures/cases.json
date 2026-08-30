@@ -1,0 +1,72 @@
+[
+  {
+    "id": "registration-error",
+    "primary_defect": "Registration rejects a short password",
+    "required_facts": ["Password must contain at least 12 characters"],
+    "forbidden_claims": ["email is invalid"],
+    "frames": ["registration-error-before.png", "registration-error-after.png"]
+  },
+  {
+    "id": "duplicate-submit",
+    "primary_defect": "One order action created two payments",
+    "required_facts": ["Payment submitted twice", "Invoice #4812", "Invoice #4813", "$49.00"],
+    "forbidden_claims": ["payment was declined"],
+    "frames": ["duplicate-submit-before.png", "duplicate-submit-after.png"]
+  },
+  {
+    "id": "mobile-overlap",
+    "primary_defect": "Profile action buttons overflow the mobile viewport",
+    "required_facts": ["Action buttons overflow the mobile viewport", "Delete profile"],
+    "forbidden_claims": ["desktop viewport"],
+    "frames": ["mobile-overlap-before.png", "mobile-overlap-after.png"]
+  },
+  {
+    "id": "stuck-loader",
+    "primary_defect": "Account overview remains in a loading state",
+    "required_facts": ["Still loading after 2 minutes", "Workspace details never appeared"],
+    "forbidden_claims": ["account was deleted"],
+    "frames": ["stuck-loader-before.png", "stuck-loader-after.png"]
+  },
+  {
+    "id": "not-found-navigation",
+    "primary_defect": "Billing navigation ends on a 404 page",
+    "required_facts": ["404", "/settings/billing", "Page not found"],
+    "forbidden_claims": ["permission denied"],
+    "frames": ["not-found-navigation-before.png", "not-found-navigation-after.png"]
+  },
+  {
+    "id": "checkout-format",
+    "primary_defect": "Checkout rejects an incomplete card number",
+    "required_facts": ["Card number must contain 16 digits", "4242 4242"],
+    "forbidden_claims": ["card expired"],
+    "frames": ["checkout-format-before.png", "checkout-format-after.png"]
+  },
+  {
+    "id": "dark-contrast",
+    "primary_defect": "API-key warning text has insufficient dark-theme contrast",
+    "required_facts": ["insufficient contrast", "Expires tomorrow", "Production API key"],
+    "forbidden_claims": ["API key is already expired"],
+    "frames": ["dark-contrast-before.png", "dark-contrast-after.png"]
+  },
+  {
+    "id": "stale-status",
+    "primary_defect": "Resolved incidents leave a stale open-count badge",
+    "required_facts": ["12 open", "0 active incidents", "All incidents were resolved"],
+    "forbidden_claims": ["12 active incidents"],
+    "frames": ["stale-status-before.png", "stale-status-after.png"]
+  },
+  {
+    "id": "upload-stuck",
+    "primary_defect": "Recording upload is stuck at 73 percent",
+    "required_facts": ["73%", "No progress for 5 minutes", "checkout-bug.webm"],
+    "forbidden_claims": ["upload completed"],
+    "frames": ["upload-stuck-before.png", "upload-stuck-after.png"]
+  },
+  {
+    "id": "table-clipping",
+    "primary_defect": "A long member email is clipped in the table",
+    "required_facts": ["Member email is clipped", "Invitation pending"],
+    "forbidden_claims": ["member is active"],
+    "frames": ["table-clipping-before.png", "table-clipping-after.png"]
+  }
+]

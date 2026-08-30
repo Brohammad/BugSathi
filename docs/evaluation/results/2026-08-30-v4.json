@@ -1,0 +1,295 @@
+{
+  "generated_at": "2026-08-30T08:05:25.902492Z",
+  "model": "gpt-4o-mini",
+  "prompt_version": "prompt_v2",
+  "cases": [
+    {
+      "id": "registration-error",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 2911,
+      "report": {
+        "Title": "Registration Error: Password Requirements Not Met",
+        "Summary": "User receives an error message when attempting to create an account due to insufficient password length.",
+        "Steps": [
+          "Navigate to the 'Create account' page.",
+          "Input the email 'dev@example.com'.",
+          "Input a password shorter than 12 characters.",
+          "Click on 'Create account'.",
+          "Observe the error message stating 'Password must contain at least 12 characters' after submission."
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "Password must contain at least 12 characters"
+      ],
+      "missing_facts": null,
+      "forbidden_matches": null,
+      "automated_score": 9,
+      "automated_pass": true,
+      "manual_review_needed": true
+    },
+    {
+      "id": "duplicate-submit",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 2138,
+      "report": {
+        "Title": "Duplicate Payment Submission Error",
+        "Summary": "The system incorrectly allows duplicate payment submissions, resulting in multiple invoices being created for the same transaction.",
+        "Steps": [
+          "1. Navigate to the 'Review order' page displaying a summary of a Team plan for $49.00.",
+          "2. Click the 'Place order' button to initiate the payment process.",
+          "3. Observe the error message displayed: 'Payment submitted twice'.",
+          "4. Note the presence of two invoices: 'Invoice #4812' and 'Invoice #4813', both displaying '$49.00 · Processing'."
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "Payment submitted twice",
+        "Invoice #4812",
+        "Invoice #4813",
+        "$49.00"
+      ],
+      "missing_facts": null,
+      "forbidden_matches": null,
+      "automated_score": 9,
+      "automated_pass": true,
+      "manual_review_needed": true
+    },
+    {
+      "id": "mobile-overlap",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 1584,
+      "report": {
+        "Title": "Button Overflow in Mobile View",
+        "Summary": "The action buttons in the mobile profile view overflow the mobile viewport, causing potential usability issues.",
+        "Steps": [
+          "View mobile profile screen where buttons are displayed",
+          "Observe the 'Message' and 'Delete' buttons overlap or extend beyond the visible area"
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": null,
+      "missing_facts": [
+        "Action buttons overflow the mobile viewport",
+        "Delete profile"
+      ],
+      "forbidden_matches": null,
+      "automated_score": 4,
+      "automated_pass": false,
+      "manual_review_needed": true
+    },
+    {
+      "id": "stuck-loader",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 1815,
+      "report": {
+        "Title": "Loading Account Stuck",
+        "Summary": "The account overview fails to load, displaying a loader indefinitely and showing an error after 2 minutes.",
+        "Steps": [
+          "Navigate to the Account Overview page.",
+          "Observe the message 'Loading account...' and the loading spinner.",
+          "Wait for 2 minutes without the account details appearing.",
+          "Note the error message 'Still loading after 2 minutes' and 'Workspace details never appeared' displayed in red."
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "Still loading after 2 minutes",
+        "Workspace details never appeared"
+      ],
+      "missing_facts": null,
+      "forbidden_matches": null,
+      "automated_score": 9,
+      "automated_pass": true,
+      "manual_review_needed": true
+    },
+    {
+      "id": "not-found-navigation",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 2386,
+      "report": {
+        "Title": "404 Error Navigating to Billing Settings",
+        "Summary": "User encounters a 404 error when attempting to access the billing settings page after clicking on 'Manage billing'. The error message states that the path '/settings/billing' could not be found.",
+        "Steps": [
+          "On the Billing settings page, the user clicks the 'Manage billing' button.",
+          "The user is redirected to a page displaying a '404' error with the message: 'The path /settings/billing could not be found.'"
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "404",
+        "/settings/billing"
+      ],
+      "missing_facts": [
+        "Page not found"
+      ],
+      "forbidden_matches": null,
+      "automated_score": 7,
+      "automated_pass": false,
+      "manual_review_needed": true
+    },
+    {
+      "id": "checkout-format",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 2060,
+      "report": {
+        "Title": "Checkout Error: Card Number Validation Failure",
+        "Summary": "The checkout process fails to accept a valid card number format due to an insufficient digit count, resulting in an error message after attempting to proceed.",
+        "Steps": [
+          "Observe the initial checkout screen displaying 'Card number: 4242 4242 4242 4242' and 'Expiry: 12/29'.",
+          "Attempt to proceed with the payment by clicking 'Pay $49.00'.",
+          "Upon the next screen, observe the error message: 'Card number must contain 16 digits', indicating the card number entered is invalid."
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "Card number must contain 16 digits",
+        "4242 4242"
+      ],
+      "missing_facts": null,
+      "forbidden_matches": null,
+      "automated_score": 9,
+      "automated_pass": true,
+      "manual_review_needed": true
+    },
+    {
+      "id": "dark-contrast",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 2145,
+      "report": {
+        "Title": "Insufficient Contrast Warning in Developer Settings",
+        "Summary": "The UI displays a warning regarding insufficient contrast for the warning text against the dark card background.",
+        "Steps": [
+          "Navigate to Developer settings.",
+          "Observe the API credentials section.",
+          "Note the presence of the warning: 'The key warning text has insufficient contrast against the dark card.'"
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "insufficient contrast"
+      ],
+      "missing_facts": [
+        "Expires tomorrow",
+        "Production API key"
+      ],
+      "forbidden_matches": null,
+      "automated_score": 5,
+      "automated_pass": false,
+      "manual_review_needed": true
+    },
+    {
+      "id": "stale-status",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 1965,
+      "report": {
+        "Title": "Stale Status Badge Not Updating",
+        "Summary": "After resolving all incidents, the header badge still incorrectly shows '12 open'.",
+        "Steps": [
+          "Navigate to the Incidents page.",
+          "Observe the message '12 incidents require attention' indicating unresolved incidents.",
+          "Resolve all incidents.",
+          "Observe message '0 active incidents' indicating no unresolved incidents.",
+          "Note that the header badge still shows '12 open' despite there being zero active incidents."
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "12 open",
+        "0 active incidents"
+      ],
+      "missing_facts": [
+        "All incidents were resolved"
+      ],
+      "forbidden_matches": null,
+      "automated_score": 7,
+      "automated_pass": false,
+      "manual_review_needed": true
+    },
+    {
+      "id": "upload-stuck",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 2333,
+      "report": {
+        "Title": "Upload Recording Stuck at 73%",
+        "Summary": "The upload process for the video file 'checkout-bug.webm' halts at 73% with a message indicating no progress for 5 minutes.",
+        "Steps": [
+          "Begin uploading 'checkout-bug.webm'.",
+          "Initial upload progress reaches 32% (18.4 MB of 57.5 MB).",
+          "Upload progress increases to 73%.",
+          "Observe the text: 'No progress for 5 minutes'."
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "73%",
+        "No progress for 5 minutes",
+        "checkout-bug.webm"
+      ],
+      "missing_facts": null,
+      "forbidden_matches": null,
+      "automated_score": 9,
+      "automated_pass": true,
+      "manual_review_needed": true
+    },
+    {
+      "id": "table-clipping",
+      "model": "gpt-4o-mini",
+      "prompt_version": "prompt_v2",
+      "frame_count": 2,
+      "latency_ms": 11053,
+      "report": {
+        "Title": "Table Clipping Issue in Workspace Members View",
+        "Summary": "The email of a workspace member is clipped and not fully readable, resulting in a user-facing error message indicating the issue.",
+        "Steps": [
+          "Navigate to the Workspace members section.",
+          "Observe the email entry for a member named 'alexandra.longlastn...' which is incomplete.",
+          "Note the displayed error message: 'Member email is clipped and cannot be read' in red below the email."
+        ],
+        "Provider": "openai",
+        "Model": "gpt-4o-mini"
+      },
+      "matched_facts": [
+        "Member email is clipped"
+      ],
+      "missing_facts": [
+        "Invitation pending"
+      ],
+      "forbidden_matches": null,
+      "automated_score": 6,
+      "automated_pass": false,
+      "manual_review_needed": true
+    }
+  ],
+  "automated_passed": 5,
+  "total": 10,
+  "release_gate_met": false,
+  "scoring_note": "Automated exact-fact scoring is a regression signal; release still requires human hallucination review."
+}

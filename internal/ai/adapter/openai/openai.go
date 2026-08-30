@@ -152,7 +152,7 @@ func buildContent(in domain.AnalysisInput) ([]contentPart, error) {
 	if len(in.Frames) == 0 {
 		return nil, fmt.Errorf("openai visual analysis requires at least one loaded frame")
 	}
-	content := make([]contentPart, 0, len(in.Frames))
+	content := make([]contentPart, 0, len(in.Frames)*2)
 	for i, frame := range in.Frames {
 		if len(frame.Data) == 0 {
 			return nil, fmt.Errorf("frame %d is empty", i)
@@ -162,13 +162,24 @@ func buildContent(in domain.AnalysisInput) ([]contentPart, error) {
 		default:
 			return nil, fmt.Errorf("frame %d has unsupported media type %q", i, frame.MediaType)
 		}
-		content = append(content, contentPart{
-			Type: "image_url",
-			ImageURL: &imageContent{
-				URL:    "data:" + frame.MediaType + ";base64," + base64.StdEncoding.EncodeToString(frame.Data),
-				Detail: "low",
+		content = append(content,
+			contentPart{
+				Type: "text",
+				Text: fmt.Sprintf(
+					"Frame %d of %d (%s in chronological order):",
+					i+1,
+					len(in.Frames),
+					frame.StorageKey,
+				),
 			},
-		})
+			contentPart{
+				Type: "image_url",
+				ImageURL: &imageContent{
+					URL:    "data:" + frame.MediaType + ";base64," + base64.StdEncoding.EncodeToString(frame.Data),
+					Detail: "high",
+				},
+			},
+		)
 	}
 	return content, nil
 }
@@ -188,6 +199,11 @@ client_metadata_json: %s
 Ground every claim in visible frame evidence or supplied metadata. Do not invent
 clicks, text, errors, expected behavior, or intermediate actions that are not
 supported by the inputs.
+
+Quote decisive visible error messages, status text, paths, identifiers, and
+numeric values verbatim. Reproduction steps may include only actions directly
+visible in the frames. When the triggering action is not visible, state
+"Trigger unknown from provided frames" and describe only what can be observed.
 
 Return JSON: {"title":"...","summary":"...","steps":["..."]}`,
 		in.RecordingID, in.ProjectID, in.PromptVersion, len(in.Frames), meta)

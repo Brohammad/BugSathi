@@ -69,8 +69,19 @@ and metadata but no image bytes. Therefore:
 - `prompt_v2` ensures previous text-only analyses do not satisfy the new input
   semantics.
 
-The first empirical baseline remains pending until all 10 fixed recordings
-exist and are run against a configured vision-capable model.
+## First empirical baseline — 2026-08-30
+
+- 10 deterministic cases, with two chronological frames per case.
+- Tuned `gpt-4o-mini`: **5/10** strict automated passes.
+- `gpt-4o` comparison: **6/10** strict automated passes.
+- Release gate: **not met**.
+- No configured forbidden claim appeared in the completed tuned runs.
+
+The primary residual problem is epistemic rather than OCR alone: frames do not
+prove the user actions between states, but the report schema asks for
+reproduction steps. See
+[`results/2026-08-30-SUMMARY.md`](results/2026-08-30-SUMMARY.md) for findings
+and the recommended product change.
 
 ## Run record
 
