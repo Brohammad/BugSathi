@@ -4,21 +4,115 @@ on:
   push:
     branches: [master, main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
-  test:
+  backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.5"
+          go-version: "1.25.0"
+          cache: true
       - name: Vet
         run: go vet ./...
-      - name: Test
-        run: go test ./...
+      - name: Race tests and coverage
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Enforce coverage floor
+        run: |
+          coverage="$(go tool cover -func=coverage.out | awk '/^total:/{gsub(/%/, "", $3); print $3}')"
+          echo "Total statement coverage: ${coverage}%"
+          awk -v coverage="$coverage" 'BEGIN {
+            if (coverage + 0 < 25) {
+              print "Coverage is below the 25% floor."
+              exit 1
+            }
+          }'
+      - name: Vulnerability scan
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
       - name: Build
         run: |
           go build -o /tmp/api ./cmd/api
           go build -o /tmp/worker ./cmd/worker
           go build -o /tmp/migrate ./cmd/migrate
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: ignore
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+      - name: Build
+        run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.0"
+          cache: true
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Start dependencies
+        run: |
+          docker compose -f deploy/compose/docker-compose.yml up -d --wait \
+            postgres minio redpanda redis
+      - name: Apply migrations
+        run: go run ./cmd/migrate ./migrations
+      - name: Run full pipeline
+        env:
+          AI_PROVIDER: mock
+          REDIS_URL: redis://127.0.0.1:6379
+          TMPDIR: ${{ github.workspace }}/.e2e
+        run: |
+          set -euo pipefail
+          mkdir -p "$TMPDIR"
+          go run ./cmd/api >api.log 2>&1 &
+          api_pid=$!
+          go run ./cmd/worker >worker.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$api_pid" "$worker_pid" 2>/dev/null || true' EXIT
+          ./scripts/e2e-hardcore.sh
+      - name: Collect dependency logs
+        if: always()
+        run: docker compose -f deploy/compose/docker-compose.yml logs --no-color >compose.log
+      - name: Upload E2E diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-diagnostics
+          path: |
+            api.log
+            worker.log
+            compose.log
+            .e2e/
+          if-no-files-found: ignore
+      - name: Stop dependencies
+        if: always()
+        run: docker compose -f deploy/compose/docker-compose.yml down -v

@@ -8,8 +8,8 @@ import (
 	"github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
 	"github.com/Brohammad/BugSathi/internal/reports/domain"
 	"github.com/alicebob/miniredis/v2"
-	goredis "github.com/redis/go-redis/v9"
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 func TestRedisReportCacheRoundTrip(t *testing.T) {

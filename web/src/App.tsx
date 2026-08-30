@@ -1,5 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
-import { AuthProvider, useAuth } from './auth/AuthContext'
+import { AuthProvider } from './auth/AuthContext'
+import { useAuth } from './auth/auth'
 import { AppShell } from './components/ui'
 import { LoginPage, RegisterPage } from './pages/AuthPages'
 import { ProjectPage } from './pages/ProjectPage'

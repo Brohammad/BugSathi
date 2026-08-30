@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/Brohammad/BugSathi/internal/reports/domain"
-	goredis "github.com/redis/go-redis/v9"
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 const detailKeyPrefix = "bugsathi:report:detail:"

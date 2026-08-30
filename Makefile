@@ -1,18 +1,21 @@
 # BugSathi — common developer commands
-# Requires: Docker Compose, Go 1.24+ (system Go OR .tools/go)
+# Requires: Docker Compose, Go 1.25+ (system Go OR .tools/go)
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
 COMPOSE_PROD := docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod
 LOCAL_GO := $(CURDIR)/.tools/go/bin/go
 
-# Prefer project-local toolchain, then PATH.
-ifeq ($(wildcard $(LOCAL_GO)),$(LOCAL_GO))
+# Prefer a system toolchain that satisfies go.mod; use the bootstrapped copy
+# only when Go is absent from PATH.
+ifneq ($(shell command -v go 2>/dev/null),)
+  GO ?= go
+else ifeq ($(wildcard $(LOCAL_GO)),$(LOCAL_GO))
   GO := $(LOCAL_GO)
 else
   GO ?= go
 endif
 
-.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race build build-images run-api run-worker health migrate fmt vet ci chaos-drill web-install web-dev web-build
+.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race coverage vuln build build-images run-api run-worker health migrate fmt vet ci chaos-drill web-install web-dev web-lint web-build
 
 help:
 	@echo "Targets:"
@@ -32,10 +35,11 @@ help:
 	@echo "  make run-worker   Run worker health on :8081"
 	@echo "  make web-install  npm install in web/"
 	@echo "  make web-dev      Vite UI on :5173 (proxies API)"
+	@echo "  make web-lint     Run frontend lint with warnings denied"
 	@echo "  make web-build    Production build of web/"
 	@echo "  make health       Curl local health endpoints"
 	@echo "  make chaos-drill  Postgres stop/start readiness drill (needs up-prod)"
-	@echo "  make ci           fmt + vet + test"
+	@echo "  make ci           Full backend/frontend verification"
 	@echo ""
 	@echo "Using GO=$(GO)"
 
@@ -43,7 +47,7 @@ ensure-go:
 	@if ! command -v "$(GO)" >/dev/null 2>&1 && [ ! -x "$(GO)" ]; then \
 		echo "Go not found."; \
 		echo "Run:  make bootstrap-go"; \
-		echo "Or install Go 1.24+ and ensure it is on PATH."; \
+		echo "Or install Go 1.25+ and ensure it is on PATH."; \
 		exit 1; \
 	fi
 	@"$(GO)" version
@@ -63,7 +67,7 @@ bootstrap-go:
 		*) echo "unsupported arch: $$ARCH"; exit 1 ;; \
 	esac; \
 	OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
-	VER=1.24.5; \
+	VER=1.25.0; \
 	TGZ="go$${VER}.$${OS}-$${GOARCH}.tar.gz"; \
 	URL="https://go.dev/dl/$${TGZ}"; \
 	echo "Downloading $${URL}"; \
@@ -113,6 +117,15 @@ test: ensure-go
 test-race: ensure-go
 	"$(GO)" test -race ./...
 
+coverage: ensure-go
+	@"$(GO)" test -covermode=atomic -coverprofile=/tmp/bugsathi-coverage.out ./... >/tmp/bugsathi-coverage.log
+	@COVERAGE=$$("$(GO)" tool cover -func=/tmp/bugsathi-coverage.out | awk '/^total:/{gsub(/%/, "", $$3); print $$3}'); \
+	echo "Total statement coverage: $${COVERAGE}%"; \
+	awk -v coverage="$$COVERAGE" 'BEGIN { if (coverage + 0 < 25) exit 1 }'
+
+vuln: ensure-go
+	"$(GO)" run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
 build: ensure-go
 	mkdir -p bin
 	"$(GO)" build -o bin/api ./cmd/api
@@ -141,6 +154,9 @@ web-install:
 web-dev:
 	cd web && npm run dev
 
+web-lint:
+	cd web && npm run lint
+
 web-build:
 	cd web && npm run build
 
@@ -150,4 +166,4 @@ fmt: ensure-go
 vet: ensure-go
 	"$(GO)" vet ./...
 
-ci: fmt vet test
+ci: fmt vet test-race coverage vuln web-lint web-build

@@ -8,8 +8,8 @@ import (
 	"github.com/Brohammad/BugSathi/internal/collab/domain"
 	"github.com/Brohammad/BugSathi/internal/collab/port"
 	"github.com/alicebob/miniredis/v2"
-	goredis "github.com/redis/go-redis/v9"
 	"github.com/google/uuid"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 func TestRedisHubCrossReplicaFanout(t *testing.T) {

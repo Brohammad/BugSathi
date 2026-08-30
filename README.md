@@ -50,7 +50,7 @@ curl -s localhost:8080/v1/projects -H "Authorization: Bearer $ACCESS" \
   -H 'Content-Type: application/json' -d '{"name":"Demo"}'
 ```
 
-Requires Docker Compose, Go 1.24+, and Node 20+ for the UI. A local Go toolchain may live under `.tools/go` (gitignored).
+Requires Docker Compose, Go 1.25+, and Node 20+ for the UI. A local Go toolchain may live under `.tools/go` (gitignored).
 
 ## MVP capabilities
 

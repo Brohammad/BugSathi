@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
 import type { Comment, ReportDetail } from '../api/types'
@@ -18,7 +18,7 @@ export function ReportPage() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  async function load() {
+  const load = useCallback(async () => {
     setError('')
     try {
       const [d, c] = await Promise.all([
@@ -30,11 +30,11 @@ export function ReportPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load report')
     }
-  }
+  }, [projectId, reportId])
 
   useEffect(() => {
     void load()
-  }, [projectId, reportId])
+  }, [load])
 
   useEffect(() => {
     const token = accessToken()
