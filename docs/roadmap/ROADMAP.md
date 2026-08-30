@@ -177,6 +177,12 @@
 - Lifecycle docs aligned with upload GC / recording delete
 - ADR 0034
 
+### M29 — Grounded multimodal analysis
+- Provider-neutral, byte-bounded frame reader backed by private object storage
+- Chronological selected frames sent as OpenAI image content
+- `prompt_v2` prevents text-only analyses from satisfying multimodal replays
+- Ten-case grounded-output evaluation gate in `docs/evaluation/VISION-EVAL.md`
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |

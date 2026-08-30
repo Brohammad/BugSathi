@@ -23,7 +23,9 @@ func IsInFlight(err error) bool {
 	return errors.Is(err, ErrAnalysisInFlight)
 }
 
-const PromptVersion = "prompt_v1"
+// PromptVersion changes whenever model inputs or report-generation semantics
+// change. prompt_v2 introduces actual chronological image content.
+const PromptVersion = "prompt_v2"
 
 const (
 	TopicAnalysisStarted   = "bugsathi.analysis.started"

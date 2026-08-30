@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	aiframes "github.com/Brohammad/BugSathi/internal/ai/adapter/frames"
 	aikafka "github.com/Brohammad/BugSathi/internal/ai/adapter/kafka"
 	aimock "github.com/Brohammad/BugSathi/internal/ai/adapter/mock"
 	aiopenai "github.com/Brohammad/BugSathi/internal/ai/adapter/openai"
@@ -36,10 +37,10 @@ import (
 	platformredis "github.com/Brohammad/BugSathi/internal/platform/redis"
 	reportcache "github.com/Brohammad/BugSathi/internal/reports/adapter/cache"
 	sharingdomain "github.com/Brohammad/BugSathi/internal/sharing/domain"
+	uploadmemaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/memory"
 	uploadminio "github.com/Brohammad/BugSathi/internal/uploads/adapter/minio"
 	uploadoutbox "github.com/Brohammad/BugSathi/internal/uploads/adapter/outbox"
 	uploadpg "github.com/Brohammad/BugSathi/internal/uploads/adapter/postgres"
-	uploadmemaccess "github.com/Brohammad/BugSathi/internal/uploads/adapter/memory"
 	uploadsvc "github.com/Brohammad/BugSathi/internal/uploads/service"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -100,6 +101,13 @@ func main() {
 		}
 	}
 	aiService := aisvc.New(aipg.NewStore(pool), analyzer, cfg.AI.MaxFrames, aiClaimLease, cfg.AI.ClaimRenew)
+	if strings.EqualFold(cfg.AI.Provider, "openai") {
+		aiService = aiService.WithFrameReader(aiframes.New(objectStore), cfg.AI.FrameMaxBytes)
+		log.Info("multimodal frame loading enabled",
+			"max_frames", cfg.AI.MaxFrames,
+			"max_bytes_per_frame", cfg.AI.FrameMaxBytes,
+		)
+	}
 	if cfg.Redis.Enabled() {
 		redisClient, rerr := platformredis.New(cfg.Redis.URL)
 		if rerr != nil {

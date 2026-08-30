@@ -19,6 +19,9 @@ consumers for emit-only `AnalysisStarted`, and multimodal OpenAI (product).
 3. **Docs** — DATA-LIFECYCLE reflects recording delete + abandoned upload GC.
 4. **Multimodal OpenAI** — still deferred (ADR 0015 / 0030).
 
+> Follow-up: M29 later resolved item 4 with bounded private-frame loading,
+> chronological OpenAI image content, and `prompt_v2`.
+
 ## Consequences
 
 **Positive** — worker restart no longer soft-resets poison-message attempt

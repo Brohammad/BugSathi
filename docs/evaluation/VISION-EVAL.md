@@ -47,7 +47,7 @@ Each recording fixture must have a companion note containing:
 - claims the model must not infer;
 - frame indexes that contain the decisive evidence.
 
-## Baseline
+## Historical baseline
 
 Before the multimodal change, the OpenAI adapter sends frame object-key strings
 and metadata but no image bytes. Therefore:
@@ -57,8 +57,20 @@ and metadata but no image bytes. Therefore:
 - quality score: **not measured** (a code-path capability failure, not an
   empirical model evaluation).
 
-The first post-change baseline is recorded only after all 10 fixtures exist and
-the provider request test proves that selected image bytes are included.
+## Current implementation status
+
+- Selected frames are loaded from private object storage with a configurable
+  per-frame byte limit.
+- JPEG, PNG, and WebP inputs are accepted; empty, oversized, and unsupported
+  objects are rejected before the provider call.
+- OpenAI receives chronological image data URLs alongside metadata and the
+  grounded-output prompt.
+- Request contract and frame-reader boundary tests pass.
+- `prompt_v2` ensures previous text-only analyses do not satisfy the new input
+  semantics.
+
+The first empirical baseline remains pending until all 10 fixed recordings
+exist and are run against a configured vision-capable model.
 
 ## Run record
 
