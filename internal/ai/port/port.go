@@ -13,6 +13,12 @@ type Analyzer interface {
 	Analyze(ctx context.Context, in domain.AnalysisInput) (domain.AnalysisResult, error)
 }
 
+// FrameReader loads one private media frame while enforcing the caller's byte
+// limit. Implementations must reject empty, oversized, or unsupported objects.
+type FrameReader interface {
+	ReadFrame(ctx context.Context, key string, maxBytes int64) (domain.FrameInput, error)
+}
+
 type Store interface {
 	GetAnalysis(ctx context.Context, recordingID uuid.UUID, promptVersion string) (domain.Analysis, error)
 	// TryClaimRunning atomically marks the analysis running when it is new,
@@ -40,8 +46,4 @@ type OutboxEvent struct {
 	PartitionKey  string
 	Payload       []byte
 	CorrelationID string
-}
-
-type ObjectStore interface {
-	// Optional future: download frame bytes for multimodal. Mock ignores.
 }

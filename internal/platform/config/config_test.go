@@ -33,9 +33,26 @@ func TestLoadDefaults(t *testing.T) {
 	if len(cfg.Kafka.Brokers) != 1 || cfg.Kafka.Brokers[0] != "kafka:9092" {
 		t.Fatalf("Kafka.Brokers = %#v", cfg.Kafka.Brokers)
 	}
+	if cfg.AI.MaxFrames != 5 || cfg.AI.FrameMaxBytes != 5<<20 {
+		t.Fatalf("AI frame limits = count %d bytes %d", cfg.AI.MaxFrames, cfg.AI.FrameMaxBytes)
+	}
 	dsn := cfg.Postgres.DSN()
 	if dsn == "" {
 		t.Fatal("expected DSN")
+	}
+}
+
+func TestLoadRejectsUnsafeAIFrameLimits(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("AI_MAX_FRAMES", "11")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AI_MAX_FRAMES") {
+		t.Fatalf("err=%v", err)
+	}
+
+	t.Setenv("AI_MAX_FRAMES", "5")
+	t.Setenv("AI_FRAME_MAX_BYTES", "20971521")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AI_FRAME_MAX_BYTES") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

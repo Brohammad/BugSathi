@@ -16,12 +16,16 @@ import (
 type Service struct {
 	store      port.Store
 	analyzer   port.Analyzer
+	frames     port.FrameReader
 	maxFrames  int
+	frameBytes int64
 	claimLease time.Duration
 	claimRenew time.Duration
 	cache      port.ReportCacheInvalidator
 	now        func() time.Time
 }
+
+const defaultFrameMaxBytes int64 = 5 << 20
 
 func New(store port.Store, analyzer port.Analyzer, maxFrames int, claimLease, claimRenew time.Duration) *Service {
 	if maxFrames <= 0 {
@@ -38,8 +42,19 @@ func New(store port.Store, analyzer port.Analyzer, maxFrames int, claimLease, cl
 	}
 	return &Service{
 		store: store, analyzer: analyzer, maxFrames: maxFrames,
+		frameBytes: defaultFrameMaxBytes,
 		claimLease: claimLease, claimRenew: claimRenew, now: time.Now,
 	}
+}
+
+// WithFrameReader enables visual analysis. The reader remains optional so the
+// deterministic mock provider can run without object-storage reads.
+func (s *Service) WithFrameReader(reader port.FrameReader, maxBytes int64) *Service {
+	s.frames = reader
+	if maxBytes > 0 {
+		s.frameBytes = maxBytes
+	}
+	return s
 }
 
 // WithCacheInvalidator clears report detail caches after successful/failed writes.
@@ -99,11 +114,18 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 	go s.renewLease(jobCtx, recordingID, domain.PromptVersion)
 
 	frameKeys := keyframes.Select(evt.FrameKeys, s.maxFrames)
+	frames, err := s.loadFrames(jobCtx, frameKeys)
+	if err != nil {
+		_ = s.store.FailAnalysis(ctx, recordingID, domain.PromptVersion, err.Error(), s.now())
+		s.invalidateReport(ctx, recordingID)
+		return err
+	}
 
 	result, err := s.analyzer.Analyze(jobCtx, domain.AnalysisInput{
 		RecordingID:   evt.RecordingID,
 		ProjectID:     evt.ProjectID,
 		FrameKeys:     frameKeys,
+		Frames:        frames,
 		MetadataJSON:  meta,
 		PromptVersion: domain.PromptVersion,
 	})
@@ -149,6 +171,21 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 		s.invalidateID(rep.ID)
 	}
 	return nil
+}
+
+func (s *Service) loadFrames(ctx context.Context, keys []string) ([]domain.FrameInput, error) {
+	if s.frames == nil {
+		return nil, nil
+	}
+	frames := make([]domain.FrameInput, 0, len(keys))
+	for _, key := range keys {
+		frame, err := s.frames.ReadFrame(ctx, key, s.frameBytes)
+		if err != nil {
+			return nil, fmt.Errorf("load frame %q: %w", key, err)
+		}
+		frames = append(frames, frame)
+	}
+	return frames, nil
 }
 
 func (s *Service) renewLease(ctx context.Context, recordingID uuid.UUID, promptVersion string) {

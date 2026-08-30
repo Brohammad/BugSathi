@@ -83,10 +83,20 @@ type Report struct {
 	UpdatedAt     time.Time
 }
 
+// FrameInput is a bounded, provider-neutral visual input loaded from object
+// storage before analysis. StorageKey is retained for ordering and diagnostics;
+// analyzers must use Data rather than assuming they can access private storage.
+type FrameInput struct {
+	StorageKey string
+	MediaType  string
+	Data       []byte
+}
+
 type AnalysisInput struct {
 	RecordingID   string
 	ProjectID     string
 	FrameKeys     []string
+	Frames        []FrameInput
 	MetadataJSON  json.RawMessage
 	PromptVersion string
 }

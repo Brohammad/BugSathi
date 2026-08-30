@@ -64,14 +64,15 @@ type ObservabilityConfig struct {
 }
 
 type AIConfig struct {
-	Provider   string // mock | openai
-	BaseURL    string
-	APIKey     string
-	Model      string
-	Timeout    time.Duration
-	MaxFrames  int
-	ClaimLease time.Duration // soft lease via analyses.updated_at
-	ClaimRenew time.Duration
+	Provider      string // mock | openai
+	BaseURL       string
+	APIKey        string
+	Model         string
+	Timeout       time.Duration
+	MaxFrames     int
+	FrameMaxBytes int64         // maximum bytes loaded for one visual frame
+	ClaimLease    time.Duration // soft lease via analyses.updated_at
+	ClaimRenew    time.Duration
 }
 
 type AuthConfig struct {
@@ -185,14 +186,15 @@ func Load() (Config, error) {
 			RefreshTokenTTL: getenvDuration("AUTH_REFRESH_TTL", 7*24*time.Hour),
 		},
 		AI: AIConfig{
-			Provider:   getenv("AI_PROVIDER", "mock"),
-			BaseURL:    getenv("AI_BASE_URL", "https://api.openai.com/v1"),
-			APIKey:     getenv("AI_API_KEY", ""),
-			Model:      getenv("AI_MODEL", "gpt-4o-mini"),
-			Timeout:    getenvDuration("AI_TIMEOUT", 60*time.Second),
-			MaxFrames:  getenvInt("AI_MAX_FRAMES", 5),
-			ClaimLease: getenvDuration("AI_CLAIM_LEASE", 0), // 0 → Timeout+30s (min 2m) in worker
-			ClaimRenew: getenvDuration("AI_CLAIM_RENEW", 30*time.Second),
+			Provider:      getenv("AI_PROVIDER", "mock"),
+			BaseURL:       getenv("AI_BASE_URL", "https://api.openai.com/v1"),
+			APIKey:        getenv("AI_API_KEY", ""),
+			Model:         getenv("AI_MODEL", "gpt-4o-mini"),
+			Timeout:       getenvDuration("AI_TIMEOUT", 60*time.Second),
+			MaxFrames:     getenvInt("AI_MAX_FRAMES", 5),
+			FrameMaxBytes: int64(getenvInt("AI_FRAME_MAX_BYTES", 5<<20)),
+			ClaimLease:    getenvDuration("AI_CLAIM_LEASE", 0), // 0 → Timeout+30s (min 2m) in worker
+			ClaimRenew:    getenvDuration("AI_CLAIM_RENEW", 30*time.Second),
 		},
 		Media: MediaConfig{
 			WorkerID:   getenv("WORKER_ID", ""),
@@ -248,6 +250,12 @@ func Load() (Config, error) {
 	}
 	if len(cfg.Auth.JWTSecret) < 32 {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+	if cfg.AI.MaxFrames < 1 || cfg.AI.MaxFrames > 10 {
+		return Config{}, fmt.Errorf("AI_MAX_FRAMES must be between 1 and 10")
+	}
+	if cfg.AI.FrameMaxBytes < 1 || cfg.AI.FrameMaxBytes > 20<<20 {
+		return Config{}, fmt.Errorf("AI_FRAME_MAX_BYTES must be between 1 and 20971520")
 	}
 	if err := cfg.validateProduction(); err != nil {
 		return Config{}, err
