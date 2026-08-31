@@ -1,6 +1,6 @@
 # Single-VPS deploy (Docker Compose + Caddy)
 
-Target: one 4 GB Linux VPS. Day 5 is the **repository foundation**. DNS, TLS issuance, and live smoke tests are Day 6.
+Target: one 4 GB Linux VPS. Repository foundation is Day 5; **Day 6** adds deploy scripts, smoke/E2E, backup/restore, and verification.
 
 ## Topology
 
@@ -27,10 +27,25 @@ Grafana/Prometheus (optional `--profile obs`) bind `127.0.0.1` so they are reach
 - Ports 80 and 443 free; firewall drop 5432, 6379, 8080, 8081, 9001, 9090, 3000
 - A domain with `A` records for the app and `s3.<domain>` (VPS only)
 
-## Configure
+## Quick start (VPS)
+
+```bash
+# On the VPS (after Docker + git)
+APP_DOMAIN=bugsathi.example.com \
+S3_DOMAIN=s3.bugsathi.example.com \
+ACME_EMAIL=you@example.com \
+./scripts/deploy-vps.sh
+```
+
+That clones/updates the repo, writes secrets, configures `.env.prod`, runs `make up-prod`, and executes `./scripts/smoke-prod.sh` over HTTPS.
+
+Full runbook: [runbooks/deploy.md](runbooks/deploy.md)
+
+## Configure manually
 
 ```bash
 cp .env.prod.example .env.prod
+# or: ./scripts/gen-prod-secrets.sh --write
 ```
 
 Change every `change-me-*` secret. Then:
@@ -60,16 +75,18 @@ MINIO_CORS_ORIGINS=https://bugsathi.example.com
 
 Leave `CORS_ORIGINS` empty so the SPA and API stay same-origin behind Caddy.
 
-## Bring up
+## Bring up and verify
 
 ```bash
 make check-prod-compose
 make up-prod
-curl -sS http://127.0.0.1/readyz
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/metrics   # 404
+./scripts/smoke-prod.sh          # health, SPA, /metrics 404, closed ports
+./scripts/e2e-prod.sh            # full pipeline (host ffmpeg)
+./scripts/chaos-drill.sh         # Postgres stop/start readiness
+make health-prod
 ```
 
-Worker readiness is internal:
+Worker readiness is internal only:
 
 ```bash
 docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod \
@@ -94,35 +111,33 @@ ufw allow 443/tcp
 ufw enable
 ```
 
-Do not publish 9000 on a public interface. Default `CADDY_S3_BIND=127.0.0.1:9000`. On a VPS, point `CADDY_S3_SITE` at `s3.<domain>` (TLS on 443) and leave the loopback bind as a local debug hatch.
+Do not publish 9000 on a public interface. Default `CADDY_S3_BIND=127.0.0.1:9000`. On a VPS, point `CADDY_S3_SITE` at `s3.<domain>` (TLS on 443).
 
-## Volumes and backup
-
-Named volumes: `postgres_prod_data`, `redis_prod_data`, `minio_prod_data`, `redpanda_prod_data`, `caddy_prod_data`.
-
-Postgres dump (logical, preferred):
+## Backup and restore
 
 ```bash
-docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod \
-  exec -T postgres pg_dump -U bugsathi bugsathi > bugsathi-$(date +%F).sql
+./scripts/backup-prod.sh              # -> backups/<timestamp>/
+./scripts/restore-prod.sh backups/<timestamp>/postgres.sql --confirm
 ```
 
-MinIO is the recording/frame store — back up `minio_prod_data` or `mc mirror` off-box. Full restore drill is Day 6.
+Schedule daily Postgres dumps (cron) and periodic MinIO mirrors off-box. Keep `git-rev.txt` in each backup folder to match code at backup time.
 
 ## Rollback
 
-Images are built locally. Keep the previous git SHA:
+See [runbooks/deploy.md](runbooks/deploy.md). Short version: backup → `git checkout <sha>` → `make up-prod` → smoke. If migrations moved, restore Postgres from the pre-deploy dump.
 
-```bash
-git checkout <previous-sha>
-make up-prod
-```
+## Scripts reference
 
-Migrations are forward-only. If a migration shipped, restore the Postgres dump taken before deploy, then start the matching SHA.
-
-## Chaos drill
-
-`./scripts/chaos-drill.sh` hits Caddy `:80` for API readiness and `compose exec` for the worker. Postgres stop must return 503, start must recover.
+| Script | Purpose |
+|--------|---------|
+| `gen-prod-secrets.sh --write` | Create `.env.prod` with random secrets |
+| `deploy-vps.sh` | First-time / update VPS deploy |
+| `smoke-prod.sh` | Fast public-surface checks |
+| `e2e-prod.sh` | Full E2E via Caddy + internal worker check |
+| `backup-prod.sh` | Postgres dump + MinIO mirror |
+| `restore-prod.sh` | Postgres restore (destructive) |
+| `chaos-drill.sh` | Postgres outage readiness drill |
+| `check-prod-compose.sh` | Guard unpublished ports + render Compose |
 
 ## Honest limits
 

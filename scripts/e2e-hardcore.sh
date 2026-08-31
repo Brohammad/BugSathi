@@ -7,6 +7,8 @@ set -uo pipefail
 
 API="${API:-http://127.0.0.1:8080}"
 WORKER="${WORKER:-http://127.0.0.1:8081}"
+PUBLIC_MODE="${PUBLIC_MODE:-0}"
+SKIP_WORKER_DIRECT="${SKIP_WORKER_DIRECT:-0}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="${TMPDIR:-/tmp}/bugsathi-e2e-$$"
 mkdir -p "$TMP"
@@ -146,13 +148,22 @@ section "0. Health / readiness"
 READY=1
 wait_http "$API/healthz" 200 "API healthz" || READY=0
 wait_http "$API/readyz" 200 "API readyz" || READY=0
-wait_http "$WORKER/healthz" 200 "Worker healthz" || READY=0
-wait_http "$WORKER/readyz" 200 "Worker readyz" || READY=0
+if [[ "$SKIP_WORKER_DIRECT" == "1" ]]; then
+  skip "Worker direct health (unpublished in prod — checked by e2e-prod wrapper)"
+else
+  wait_http "$WORKER/healthz" 200 "Worker healthz" || READY=0
+  wait_http "$WORKER/readyz" 200 "Worker readyz" || READY=0
+fi
 if [[ "$READY" != "1" ]]; then
   section "SUMMARY"
   log "ABORT: API/worker not reachable — refusing to continue."
-  log "Start the stack first, e.g.:"
-  log "  make up && make migrate && make run-api & make run-worker &"
+  if [[ "$PUBLIC_MODE" == "1" ]]; then
+    log "Start prod stack: make up-prod"
+    log "Then: ./scripts/e2e-prod.sh"
+  else
+    log "Start the stack first, e.g.:"
+    log "  make up && make migrate && make run-api & make run-worker &"
+  fi
   log "PASS=$PASS FAIL=$FAIL SKIP=$SKIP"
   log "Full log: $REPORT"
   log "curl stderr: $CURLLOG"
@@ -163,10 +174,17 @@ H=$(curl -sSI "$API/healthz" 2>>"$CURLLOG" || true)
 echo "$H" | grep -qi 'X-Content-Type-Options: nosniff' && ok "security header nosniff" || bad "missing nosniff"
 echo "$H" | grep -qi 'X-Frame-Options: DENY' && ok "security header frame deny" || bad "missing frame deny"
 
-MET=$(curl -sS "$API/metrics" 2>>"$CURLLOG" || true)
-echo "$MET" | grep -q 'bugsathi_http_requests_total' && ok "API metrics scrape" || bad "API metrics missing"
-METW=$(curl -sS "$WORKER/metrics" 2>>"$CURLLOG" || true)
-echo "$METW" | grep -q 'bugsathi_pipeline_jobs_total\|bugsathi_http_requests_total' && ok "Worker metrics scrape" || bad "Worker metrics missing"
+if [[ "$PUBLIC_MODE" == "1" ]]; then
+  c=$(http_code "$API/metrics")
+  assert_code "$c" "404" "/metrics blocked on public surface"
+  skip "API metrics direct scrape (prod)"
+  skip "Worker metrics direct scrape (prod)"
+else
+  MET=$(curl -sS "$API/metrics" 2>>"$CURLLOG" || true)
+  echo "$MET" | grep -q 'bugsathi_http_requests_total' && ok "API metrics scrape" || bad "API metrics missing"
+  METW=$(curl -sS "$WORKER/metrics" 2>>"$CURLLOG" || true)
+  echo "$METW" | grep -q 'bugsathi_pipeline_jobs_total\|bugsathi_http_requests_total' && ok "Worker metrics scrape" || bad "Worker metrics missing"
+fi
 
 section "1. Auth — register / login / me / refresh / logout"
 ACCESS=""

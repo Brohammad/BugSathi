@@ -116,3 +116,50 @@ jobs:
       - name: Stop dependencies
         if: always()
         run: docker compose -f deploy/compose/docker-compose.yml down -v
+
+  prod-smoke:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Prepare prod env
+        run: ./scripts/gen-prod-secrets.sh --write
+      - name: Start production stack
+        run: make up-prod
+      - name: Wait for Caddy readiness
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1/readyz >/dev/null; then
+              echo "ready after ~$((i * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod ps
+          exit 1
+      - name: Smoke test
+        run: ./scripts/smoke-prod.sh
+      - name: Production E2E
+        run: ./scripts/e2e-prod.sh
+      - name: Chaos drill
+        run: ./scripts/chaos-drill.sh
+      - name: Collect prod logs
+        if: always()
+        run: |
+          docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod logs --no-color > prod-compose.log
+      - name: Upload prod diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-smoke-diagnostics
+          path: prod-compose.log
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: make down-prod

@@ -15,7 +15,7 @@ else
   GO ?= go
 endif
 
-.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race coverage vuln build build-images run-api run-worker health health-prod migrate fmt vet ci chaos-drill check-prod-compose web-install web-dev web-lint web-build
+.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race coverage vuln build build-images run-api run-worker health health-prod migrate fmt vet ci chaos-drill check-prod-compose smoke-prod e2e-prod backup-prod deploy-vps web-install web-dev web-lint web-build
 
 help:
 	@echo "Targets:"
@@ -40,6 +40,10 @@ help:
 	@echo "  make web-build    Production build of web/"
 	@echo "  make health       Curl local health endpoints"
 	@echo "  make health-prod  Curl Caddy /readyz and confirm /metrics is 404"
+	@echo "  make smoke-prod   Fast prod smoke (needs up-prod)"
+	@echo "  make e2e-prod     Full E2E via Caddy (needs up-prod + ffmpeg)"
+	@echo "  make backup-prod  Postgres + MinIO backup to backups/"
+	@echo "  make deploy-vps   VPS bootstrap (needs APP_DOMAIN, S3_DOMAIN, ACME_EMAIL)"
 	@echo "  make chaos-drill  Postgres stop/start readiness drill (needs up-prod)"
 	@echo "  make ci           Full backend/frontend verification"
 	@echo ""
@@ -160,6 +164,18 @@ health-prod:
 
 chaos-drill:
 	@./scripts/chaos-drill.sh
+
+smoke-prod:
+	@./scripts/smoke-prod.sh
+
+e2e-prod:
+	@./scripts/e2e-prod.sh
+
+backup-prod:
+	@./scripts/backup-prod.sh
+
+deploy-vps:
+	@./scripts/deploy-vps.sh
 
 web-install:
 	cd web && npm install

@@ -29,7 +29,7 @@ make up-prod          # build + start
 make up-prod-obs      # also Prometheus + Grafana on localhost
 make down-prod
 curl -sS http://127.0.0.1/readyz
-curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/metrics   # expect 404
+./scripts/smoke-prod.sh
 ./scripts/chaos-drill.sh
 ```
 

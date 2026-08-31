@@ -82,6 +82,7 @@
 - Docker HEALTHCHECK / Compose readiness on `/healthz` + `/readyz`
 - Secrets via `.env.prod` (gitignored); K8s Secret/ConfigMap sketches
 - `make up-prod` / `make build-images` / `make check-prod-compose`
+- Deploy scripts: `smoke-prod`, `e2e-prod`, `backup-prod`, `deploy-vps`
 - VPS runbook: `docs/operations/vps.md`
 
 ### M13 — Performance Optimization
