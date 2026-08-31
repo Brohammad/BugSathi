@@ -1,0 +1,30 @@
+{
+	email {$ACME_EMAIL:admin@localhost}
+}
+
+{$CADDY_SITE} {
+	encode gzip zstd
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	@api path /v1* /healthz /readyz /s/*
+	handle @api {
+		reverse_proxy api:8080
+	}
+
+	handle /metrics* {
+		respond "Not Found" 404
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}
+
+{$CADDY_S3_SITE} {
+	reverse_proxy minio:9000
+}

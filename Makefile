@@ -15,17 +15,18 @@ else
   GO ?= go
 endif
 
-.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race coverage vuln build build-images run-api run-worker health migrate fmt vet ci chaos-drill web-install web-dev web-lint web-build
+.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race coverage vuln build build-images run-api run-worker health health-prod migrate fmt vet ci chaos-drill check-prod-compose web-install web-dev web-lint web-build
 
 help:
 	@echo "Targets:"
 	@echo "  make bootstrap-go Download Go into .tools/go (if missing)"
 	@echo "  make up           Start local deps (Postgres, MinIO, Redpanda, obs)"
 	@echo "  make down         Stop local deps"
-	@echo "  make up-prod      Start production-like Compose (needs .env.prod)"
-	@echo "  make up-prod-obs  Prod Compose + Prometheus/Grafana profile"
+	@echo "  make up-prod      Start production Compose behind Caddy (needs .env.prod)"
+	@echo "  make up-prod-obs  Prod Compose + Prometheus/Grafana on localhost"
 	@echo "  make down-prod    Stop production-like Compose"
-	@echo "  make build-images Build api/worker/migrate Docker images"
+	@echo "  make check-prod-compose  Guard unpublished infra ports + render Compose"
+	@echo "  make build-images Build api/worker/migrate/web Docker images"
 	@echo "  make logs         Tail compose logs"
 	@echo "  make tidy         go mod tidy"
 	@echo "  make test         Run unit tests"
@@ -38,6 +39,7 @@ help:
 	@echo "  make web-lint     Run frontend lint with warnings denied"
 	@echo "  make web-build    Production build of web/"
 	@echo "  make health       Curl local health endpoints"
+	@echo "  make health-prod  Curl Caddy /readyz and confirm /metrics is 404"
 	@echo "  make chaos-drill  Postgres stop/start readiness drill (needs up-prod)"
 	@echo "  make ci           Full backend/frontend verification"
 	@echo ""
@@ -84,23 +86,27 @@ up:
 down:
 	$(COMPOSE) down
 
-up-prod:
+up-prod: check-prod-compose
 	@test -f .env.prod || (echo "Copy .env.prod.example to .env.prod and set secrets"; exit 1)
 	$(COMPOSE_PROD) up -d --build
-	@echo "API :8080  Worker :8081  (prod compose)"
+	@echo "Caddy :80 (UI + /v1)  S3 127.0.0.1:9000  (Postgres/Redis/Redpanda/API/worker unpublished)"
 
-up-prod-obs:
+up-prod-obs: check-prod-compose
 	@test -f .env.prod || (echo "Copy .env.prod.example to .env.prod and set secrets"; exit 1)
 	$(COMPOSE_PROD) --profile obs up -d --build
-	@echo "API :8080  Worker :8081  Prometheus :9090  Grafana :3000"
+	@echo "Caddy :80  Grafana 127.0.0.1:3000  Prometheus 127.0.0.1:9090"
 
 down-prod:
 	$(COMPOSE_PROD) --profile obs down
+
+check-prod-compose:
+	@./scripts/check-prod-compose.sh
 
 build-images:
 	docker build -f deploy/docker/Dockerfile.api -t bugsathi/api:latest .
 	docker build -f deploy/docker/Dockerfile.worker -t bugsathi/worker:latest .
 	docker build -f deploy/docker/Dockerfile.migrate -t bugsathi/migrate:latest .
+	docker build -f deploy/docker/Dockerfile.web -t bugsathi/web:latest .
 
 logs:
 	$(COMPOSE) logs -f --tail=200
@@ -144,6 +150,13 @@ run-worker: build
 health:
 	@curl -sS -D - http://127.0.0.1:8080/healthz -o /tmp/bugsathi-api-health.json && echo && cat /tmp/bugsathi-api-health.json && echo
 	@curl -sS -D - http://127.0.0.1:8081/healthz -o /tmp/bugsathi-worker-health.json && echo && cat /tmp/bugsathi-worker-health.json && echo
+
+health-prod:
+	@curl -sS -D - http://127.0.0.1/healthz -o /tmp/bugsathi-caddy-health.json && echo && cat /tmp/bugsathi-caddy-health.json && echo
+	@curl -sS -D - http://127.0.0.1/readyz -o /tmp/bugsathi-caddy-ready.json && echo && cat /tmp/bugsathi-caddy-ready.json && echo
+	@code=$$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1/metrics); \
+	echo "/metrics via Caddy = $$code (expected 404)"; \
+	test "$$code" = "404"
 
 chaos-drill:
 	@./scripts/chaos-drill.sh

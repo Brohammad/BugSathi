@@ -92,6 +92,40 @@ func TestProductionRejectsPprof(t *testing.T) {
 	}
 }
 
+func TestMinIOPresignEndpointDefaultsToInternal(t *testing.T) {
+	cfg := MinIOConfig{Endpoint: "minio:9000", UseSSL: false}
+	ep, ssl := cfg.PresignEndpoint()
+	if ep != "minio:9000" || ssl {
+		t.Fatalf("PresignEndpoint() = %q ssl=%v", ep, ssl)
+	}
+}
+
+func TestMinIOPresignEndpointUsesPublicHost(t *testing.T) {
+	cfg := MinIOConfig{
+		Endpoint:       "minio:9000",
+		PublicEndpoint: "s3.example.com",
+		PublicUseSSL:   true,
+	}
+	ep, ssl := cfg.PresignEndpoint()
+	if ep != "s3.example.com" || !ssl {
+		t.Fatalf("PresignEndpoint() = %q ssl=%v", ep, ssl)
+	}
+}
+
+func TestLoadMinIOPublicEndpoint(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("HTTP_ADDR", ":8080")
+	t.Setenv("MINIO_PUBLIC_ENDPOINT", "s3.example.com")
+	t.Setenv("MINIO_PUBLIC_USE_SSL", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MinIO.PublicEndpoint != "s3.example.com" || !cfg.MinIO.PublicUseSSL {
+		t.Fatalf("MinIO public = %+v", cfg.MinIO)
+	}
+}
+
 func TestProductionRejectsPlaintextShareTokens(t *testing.T) {
 	setProdEnv(t)
 	t.Setenv("SHARE_HASH_TOKENS", "false")

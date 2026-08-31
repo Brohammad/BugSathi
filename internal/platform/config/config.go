@@ -101,11 +101,22 @@ func (p PostgresConfig) DSN() string {
 }
 
 type MinIOConfig struct {
-	Endpoint  string
-	AccessKey string
-	SecretKey string
-	Bucket    string
-	UseSSL    bool
+	Endpoint       string
+	PublicEndpoint string
+	AccessKey      string
+	SecretKey      string
+	Bucket         string
+	UseSSL         bool
+	PublicUseSSL   bool
+}
+
+// PresignEndpoint is the host browsers hit for presigned PUT/GET.
+// When PublicEndpoint is empty, internal Endpoint is used.
+func (m MinIOConfig) PresignEndpoint() (endpoint string, useSSL bool) {
+	if ep := strings.TrimSpace(m.PublicEndpoint); ep != "" {
+		return ep, m.PublicUseSSL
+	}
+	return m.Endpoint, m.UseSSL
 }
 
 type KafkaConfig struct {
@@ -170,11 +181,13 @@ func Load() (Config, error) {
 			MaxConnLifetime: getenvDuration("POSTGRES_MAX_CONN_LIFETIME", time.Hour),
 		},
 		MinIO: MinIOConfig{
-			Endpoint:  getenv("MINIO_ENDPOINT", "localhost:9000"),
-			AccessKey: getenv("MINIO_ACCESS_KEY", "bugsathi"),
-			SecretKey: getenv("MINIO_SECRET_KEY", "bugsathi_secret"),
-			Bucket:    getenv("MINIO_BUCKET", "bugsathi"),
-			UseSSL:    getenvBool("MINIO_USE_SSL", false),
+			Endpoint:       getenv("MINIO_ENDPOINT", "localhost:9000"),
+			PublicEndpoint: getenv("MINIO_PUBLIC_ENDPOINT", ""),
+			AccessKey:      getenv("MINIO_ACCESS_KEY", "bugsathi"),
+			SecretKey:      getenv("MINIO_SECRET_KEY", "bugsathi_secret"),
+			Bucket:         getenv("MINIO_BUCKET", "bugsathi"),
+			UseSSL:         getenvBool("MINIO_USE_SSL", false),
+			PublicUseSSL:   getenvBool("MINIO_PUBLIC_USE_SSL", false),
 		},
 		Kafka: KafkaConfig{
 			Brokers:  strings.Split(getenv("KAFKA_BROKERS", "localhost:19092"), ","),

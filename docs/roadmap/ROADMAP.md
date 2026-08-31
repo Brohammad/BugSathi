@@ -77,10 +77,12 @@
 - Outbox lag + AI latency + pipeline stage metrics
 
 ### M12 — Deployment
-- Production Compose (`docker-compose.prod.yml`) with migrate job + api + worker
+- Production Compose (`docker-compose.prod.yml`) with migrate job + api + worker + web + Caddy
+- Caddy is the only public process; Postgres/Redis/Redpanda/MinIO/API/worker stay on the Compose network
 - Docker HEALTHCHECK / Compose readiness on `/healthz` + `/readyz`
 - Secrets via `.env.prod` (gitignored); K8s Secret/ConfigMap sketches
-- `make up-prod` / `make build-images`
+- `make up-prod` / `make build-images` / `make check-prod-compose`
+- VPS runbook: `docs/operations/vps.md`
 
 ### M13 — Performance Optimization
 - Configurable Postgres pool (`POSTGRES_MAX_CONNS`, …)

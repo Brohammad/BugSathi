@@ -18,18 +18,30 @@ import (
 
 type Storage struct {
 	client *miniosdk.Client
+	signer *miniosdk.Client
 	bucket string
 }
 
 func New(cfg config.MinIOConfig) (*Storage, error) {
+	creds := credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, "")
 	client, err := miniosdk.New(cfg.Endpoint, &miniosdk.Options{
-		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Creds:  creds,
 		Secure: cfg.UseSSL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("minio client: %w", err)
 	}
-	return &Storage{client: client, bucket: cfg.Bucket}, nil
+	signer := client
+	if ep, useSSL := cfg.PresignEndpoint(); ep != cfg.Endpoint || useSSL != cfg.UseSSL {
+		signer, err = miniosdk.New(ep, &miniosdk.Options{
+			Creds:  creds,
+			Secure: useSSL,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("minio presign client: %w", err)
+		}
+	}
+	return &Storage{client: client, signer: signer, bucket: cfg.Bucket}, nil
 }
 
 func (s *Storage) EnsureBucket(ctx context.Context) error {
@@ -48,7 +60,7 @@ func (s *Storage) PresignPut(ctx context.Context, key, contentType string, expir
 	if ct := strings.TrimSpace(contentType); ct != "" {
 		headers.Set("Content-Type", ct)
 	}
-	u, err := s.client.PresignHeader(ctx, http.MethodPut, s.bucket, key, expiry, nil, headers)
+	u, err := s.signer.PresignHeader(ctx, http.MethodPut, s.bucket, key, expiry, nil, headers)
 	if err != nil {
 		return "", err
 	}
@@ -97,7 +109,7 @@ func (s *Storage) Upload(ctx context.Context, key, contentType string, r io.Read
 }
 
 func (s *Storage) PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, nil)
+	u, err := s.signer.PresignedGetObject(ctx, s.bucket, key, expiry, nil)
 	if err != nil {
 		return "", err
 	}
