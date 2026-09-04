@@ -77,10 +77,13 @@
 - Outbox lag + AI latency + pipeline stage metrics
 
 ### M12 — Deployment
-- Production Compose (`docker-compose.prod.yml`) with migrate job + api + worker
+- Production Compose (`docker-compose.prod.yml`) with migrate job + api + worker + web + Caddy
+- Caddy is the only public process; Postgres/Redis/Redpanda/MinIO/API/worker stay on the Compose network
 - Docker HEALTHCHECK / Compose readiness on `/healthz` + `/readyz`
 - Secrets via `.env.prod` (gitignored); K8s Secret/ConfigMap sketches
-- `make up-prod` / `make build-images`
+- `make up-prod` / `make build-images` / `make check-prod-compose`
+- Deploy scripts: `smoke-prod`, `e2e-prod`, `backup-prod`, `deploy-vps`
+- VPS runbook: `docs/operations/vps.md`
 
 ### M13 — Performance Optimization
 - Configurable Postgres pool (`POSTGRES_MAX_CONNS`, …)
@@ -125,7 +128,7 @@
 ### M20 — Object cleanup on project delete
 - `DeletePrefix` on MinIO (+ memory) removes `projects/{id}/…` after DB cascade
 - HTTP delete stays 204 if MinIO cleanup fails (logged); missing keys are OK
-- Abandoned `UPLOADING` GC deferred; no per-recording delete API yet
+- Abandoned `UPLOADING` GC via `UPLOAD_ABANDONED_TTL`; per-recording delete API for owners
 - ADR 0026
 
 ### M21 — Trusted proxy & production guards
@@ -153,6 +156,35 @@
 - `REDIS_URL` enables shared SSE pub/sub, rate limits, report cache
 - Default off for local single-replica dev; Compose includes Redis service
 - ADR 0031
+
+### M26 — Audit-gap hardening
+- AI soft claim / single-flight while analysis is `running` (lease + Kafka skip)
+- Worker invalidates Redis report cache after AI complete/fail
+- Refresh-token reuse outside grace → revoke all user refresh tokens
+- Upload allowlist + Content-Type-bound presign + size cap + ETag checksum
+- React report page wires SSE (`EventSource` + `access_token` query)
+- ADR 0032
+
+### M27 — Remaining audit gaps (one commit each)
+- Kafka client ID, header correlation restore, worker drain
+- Redis rate-limit fail-closed + capacity alignment
+- Share create/revoke owner-only; project member remove + last-owner guard
+- CSP + production HSTS
+- Abandoned `UPLOADING` GC; `AnalysisStarted` + report `GENERATING`
+- Per-recording delete API
+- ADR 0033
+
+### M28 — Deferred audit follow-ups
+- Durable Kafka retry attempts in Postgres (`kafka_retry_attempts`)
+- `AnalysisStarted` observability consumer + metric
+- Lifecycle docs aligned with upload GC / recording delete
+- ADR 0034
+
+### M29 — Grounded multimodal analysis
+- Provider-neutral, byte-bounded frame reader backed by private object storage
+- Chronological selected frames sent as OpenAI image content
+- `prompt_v2` prevents text-only analyses from satisfying multimodal replays
+- Ten-case grounded-output evaluation gate in `docs/evaluation/VISION-EVAL.md`
 
 ## Suggested weekly cadence (flexible)
 

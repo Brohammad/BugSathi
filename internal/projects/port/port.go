@@ -16,6 +16,7 @@ type Repository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetMembership(ctx context.Context, projectID, userID uuid.UUID) (domain.Member, error)
 	AddMember(ctx context.Context, member domain.Member) error
+	RemoveMember(ctx context.Context, projectID, userID uuid.UUID) error
 	ListMembers(ctx context.Context, projectID uuid.UUID, page pagination.Page) (pagination.Result[domain.Member], error)
 	CountOwners(ctx context.Context, projectID uuid.UUID) (int, error)
 }

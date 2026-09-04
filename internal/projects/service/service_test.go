@@ -73,6 +73,29 @@ func TestProjectLifecycle(t *testing.T) {
 	}
 }
 
+func TestRemoveMemberAndLastOwnerGuard(t *testing.T) {
+	svc := service.New(memory.NewRepo(), uploadmem.NewStorage(), slog.Default(), config.ListConfig{})
+	ctx := context.Background()
+	owner := uuid.New()
+	member := uuid.New()
+	p, err := svc.Create(ctx, owner, "Acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddMember(ctx, owner, p.ID, member, "member"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveMember(ctx, member, p.ID, member); err != domain.ErrForbidden {
+		t.Fatalf("member remove: %v", err)
+	}
+	if err := svc.RemoveMember(ctx, owner, p.ID, member); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RemoveMember(ctx, owner, p.ID, owner); err != domain.ErrLastOwner {
+		t.Fatalf("last owner: %v", err)
+	}
+}
+
 func TestDeleteRemovesProjectObjects(t *testing.T) {
 	repo := memory.NewRepo()
 	objs := uploadmem.NewStorage()

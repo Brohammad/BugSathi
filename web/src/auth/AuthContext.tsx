@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -9,16 +7,7 @@ import {
 } from 'react'
 import { api, configureAuthStore } from '../api/client'
 import type { Tokens, User } from '../api/types'
-
-type AuthState = {
-  user: User | null
-  loading: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name: string) => Promise<void>
-  logout: () => Promise<void>
-}
-
-const AuthContext = createContext<AuthState | null>(null)
+import { AuthContext } from './auth'
 
 function readTokens(): Tokens | null {
   const access = localStorage.getItem('bs_access')
@@ -91,10 +80,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth outside AuthProvider')
-  return ctx
 }

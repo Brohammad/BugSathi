@@ -9,11 +9,13 @@ import (
 )
 
 var (
-	ErrNotFound          = errors.New("recording not found")
-	ErrForbidden         = errors.New("forbidden")
-	ErrInvalidInput      = errors.New("invalid input")
-	ErrIllegalTransition = errors.New("illegal status transition")
-	ErrObjectMissing     = errors.New("uploaded object not found in storage")
+	ErrNotFound            = errors.New("recording not found")
+	ErrForbidden           = errors.New("forbidden")
+	ErrInvalidInput        = errors.New("invalid input")
+	ErrIllegalTransition   = errors.New("illegal status transition")
+	ErrObjectMissing       = errors.New("uploaded object not found in storage")
+	ErrObjectTooLarge      = errors.New("uploaded object exceeds size limit")
+	ErrContentTypeMismatch = errors.New("uploaded object content type mismatch")
 )
 
 type Status string

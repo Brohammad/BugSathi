@@ -10,8 +10,9 @@ Accepted
 shares, comments) but left MinIO objects in place. Over time that orphans
 source videos, frames, and thumbs under `projects/{id}/…` (ADR 0003).
 
-There is no per-recording delete API yet; recordings disappear only via project
-cascade.
+There is a per-recording delete API: `DELETE /v1/projects/{id}/recordings/{recordingID}`
+(owner-only) removes the DB row (cascade) then best-effort deletes
+`projects/{project_id}/recordings/{recording_id}/`.
 
 ## Decision
 
@@ -21,15 +22,16 @@ cascade.
    Retrying after a DB success cannot re-find the project; failing the request
    would strand the client with a deleted project and a confusing error.
 3. Missing keys are treated as success so cleanup is idempotent.
-4. Abandoned `UPLOADING` sessions whose project still exists are **out of
-   scope** (lifecycle sweeper later; ADR 0003 / 0013).
+4. Abandoned `UPLOADING` sessions whose project still exists are swept by the
+   worker when `UPLOAD_ABANDONED_TTL` is set (default 24h): DB row deleted if
+   still `UPLOADING`, then best-effort object delete.
 
 ## Consequences
 
 **Positive** — project delete removes both metadata and bytes; prefix cleanup
 covers source + frames + thumb without enumerating DB keys after cascade.  
 **Negative** — a MinIO outage during delete leaves orphans until a future
-reconcile job; no recording-level delete API yet.
+reconcile job.
 
 ## Alternatives
 

@@ -88,6 +88,20 @@ func (r *Repo) AddMember(_ context.Context, member domain.Member) error {
 	return nil
 }
 
+func (r *Repo) RemoveMember(_ context.Context, projectID, userID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ms, ok := r.members[projectID]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	if _, ok := ms[userID]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(ms, userID)
+	return nil
+}
+
 func (r *Repo) CountOwners(_ context.Context, projectID uuid.UUID) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

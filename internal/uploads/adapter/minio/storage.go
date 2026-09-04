@@ -5,28 +5,43 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 	"github.com/Brohammad/BugSathi/internal/uploads/domain"
+	"github.com/Brohammad/BugSathi/internal/uploads/port"
 	miniosdk "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 type Storage struct {
 	client *miniosdk.Client
+	signer *miniosdk.Client
 	bucket string
 }
 
 func New(cfg config.MinIOConfig) (*Storage, error) {
+	creds := credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, "")
 	client, err := miniosdk.New(cfg.Endpoint, &miniosdk.Options{
-		Creds:  credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, ""),
+		Creds:  creds,
 		Secure: cfg.UseSSL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("minio client: %w", err)
 	}
-	return &Storage{client: client, bucket: cfg.Bucket}, nil
+	signer := client
+	if ep, useSSL := cfg.PresignEndpoint(); ep != cfg.Endpoint || useSSL != cfg.UseSSL {
+		signer, err = miniosdk.New(ep, &miniosdk.Options{
+			Creds:  creds,
+			Secure: useSSL,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("minio presign client: %w", err)
+		}
+	}
+	return &Storage{client: client, signer: signer, bucket: cfg.Bucket}, nil
 }
 
 func (s *Storage) EnsureBucket(ctx context.Context) error {
@@ -41,24 +56,31 @@ func (s *Storage) EnsureBucket(ctx context.Context) error {
 }
 
 func (s *Storage) PresignPut(ctx context.Context, key, contentType string, expiry time.Duration) (string, error) {
-	_ = contentType // clients should send Content-Type; URL is method+key scoped
-	u, err := s.client.PresignedPutObject(ctx, s.bucket, key, expiry)
+	headers := http.Header{}
+	if ct := strings.TrimSpace(contentType); ct != "" {
+		headers.Set("Content-Type", ct)
+	}
+	u, err := s.signer.PresignHeader(ctx, http.MethodPut, s.bucket, key, expiry, nil, headers)
 	if err != nil {
 		return "", err
 	}
 	return u.String(), nil
 }
 
-func (s *Storage) Stat(ctx context.Context, key string) (int64, string, error) {
+func (s *Storage) Stat(ctx context.Context, key string) (port.ObjectMeta, error) {
 	info, err := s.client.StatObject(ctx, s.bucket, key, miniosdk.StatObjectOptions{})
 	if err != nil {
 		errResp := miniosdk.ToErrorResponse(err)
 		if errResp.Code == "NoSuchKey" || errResp.StatusCode == 404 {
-			return 0, "", domain.ErrObjectMissing
+			return port.ObjectMeta{}, domain.ErrObjectMissing
 		}
-		return 0, "", err
+		return port.ObjectMeta{}, err
 	}
-	return info.Size, info.ContentType, nil
+	return port.ObjectMeta{
+		Size:        info.Size,
+		ContentType: info.ContentType,
+		ETag:        info.ETag,
+	}, nil
 }
 
 // Put is used by tests / tooling (API path uses presign).
@@ -87,7 +109,7 @@ func (s *Storage) Upload(ctx context.Context, key, contentType string, r io.Read
 }
 
 func (s *Storage) PresignGet(ctx context.Context, key string, expiry time.Duration) (string, error) {
-	u, err := s.client.PresignedGetObject(ctx, s.bucket, key, expiry, nil)
+	u, err := s.signer.PresignedGetObject(ctx, s.bucket, key, expiry, nil)
 	if err != nil {
 		return "", err
 	}

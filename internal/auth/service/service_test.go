@@ -98,6 +98,33 @@ func TestRefreshReuseReturnsUnauthorized(t *testing.T) {
 	}
 }
 
+func TestRefreshReuseRevokesFamily(t *testing.T) {
+	svc := newTestService(t).WithReuseGrace(0)
+	ctx := context.Background()
+	_, pair, err := svc.Register(ctx, "family@example.com", "password123", "Family")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated, err := svc.Refresh(ctx, pair.RefreshToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, other, err := svc.Login(ctx, "family@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reuse of the already-rotated token after grace=0 revokes every session.
+	if _, err := svc.Refresh(ctx, pair.RefreshToken); err != domain.ErrUnauthorized {
+		t.Fatalf("reuse: got %v", err)
+	}
+	if _, err := svc.Refresh(ctx, rotated.RefreshToken); err != domain.ErrUnauthorized {
+		t.Fatalf("rotated session should be wiped, got %v", err)
+	}
+	if _, err := svc.Refresh(ctx, other.RefreshToken); err != domain.ErrUnauthorized {
+		t.Fatalf("other session should be wiped, got %v", err)
+	}
+}
+
 func TestRefreshConcurrentRace(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()

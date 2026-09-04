@@ -18,4 +18,6 @@ After M14, Kafka consumers retry failed handlers forever with exponential backof
 ## Consequences
 
 **Positive** — partitions no longer stall forever; operators have a first-class retry; teaches DLQ vs blind retry.  
-**Negative** — attempt counters reset on process restart (extra retries before DLQ); DLQ is not auto-consumed (inspect/replay via reprocess).
+**Negative** — DLQ is not auto-consumed (inspect/replay via reprocess). Attempt
+counters are durable in Postgres (`kafka_retry_attempts`) so restarts do not
+reset the path to DLQ.

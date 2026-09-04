@@ -17,18 +17,25 @@ func DLQTopic(source string) string {
 
 // DeadLetter is the envelope written to *.dlq topics.
 type DeadLetter struct {
-	SchemaVersion  int             `json:"schema_version"`
-	SourceTopic    string          `json:"source_topic"`
-	SourcePartition int            `json:"source_partition"`
-	SourceOffset   int64           `json:"source_offset"`
-	Key            string          `json:"key,omitempty"`
-	Attempts       int             `json:"attempts"`
-	Error          string          `json:"error"`
-	Payload        json.RawMessage `json:"payload"`
-	DeadLetteredAt time.Time       `json:"dead_lettered_at"`
+	SchemaVersion   int             `json:"schema_version"`
+	SourceTopic     string          `json:"source_topic"`
+	SourcePartition int             `json:"source_partition"`
+	SourceOffset    int64           `json:"source_offset"`
+	Key             string          `json:"key,omitempty"`
+	Attempts        int             `json:"attempts"`
+	Error           string          `json:"error"`
+	Payload         json.RawMessage `json:"payload"`
+	DeadLetteredAt  time.Time       `json:"dead_lettered_at"`
 }
 
-// AttemptTracker counts consecutive failures for a Kafka message identity.
+// AttemptCounter tracks consecutive handler failures for a Kafka message identity.
+// Implementations may be in-process or durable (Postgres).
+type AttemptCounter interface {
+	Inc(topic string, partition int, offset int64) int
+	Clear(topic string, partition int, offset int64)
+}
+
+// AttemptTracker counts consecutive failures in process memory.
 type AttemptTracker struct {
 	mu   sync.Mutex
 	byID map[string]int

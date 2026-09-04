@@ -20,6 +20,7 @@ type Repository interface {
 
 type ProjectAccess interface {
 	EnsureMember(ctx context.Context, userID, projectID uuid.UUID) error
+	EnsureOwner(ctx context.Context, userID, projectID uuid.UUID) error
 }
 
 type ReportReader interface {

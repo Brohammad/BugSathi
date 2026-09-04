@@ -25,3 +25,4 @@ vendor/
 
 # Compose volumes / data
 data/
+backups/

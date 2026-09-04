@@ -15,7 +15,7 @@
    ```
 2. Curl readiness:
    ```bash
-   curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/readyz
+   curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1/readyz
    ```
 3. Inspect Postgres logs:
    ```bash
@@ -29,7 +29,7 @@
    docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod start postgres
    ```
 2. Wait for `pg_isready` healthcheck to pass.
-3. Verify `/readyz` returns 200 on API (`:8080`) and worker (`:8081`).
+3. Verify `/readyz` returns 200 on the public Caddy URL (`http://127.0.0.1/readyz`) and on the worker via `docker compose ... exec -T worker curl -fsS http://127.0.0.1:8081/readyz`.
 4. Watch `bugsathi_outbox_pending` — relay should drain without manual intervention.
 
 ## Expected behavior

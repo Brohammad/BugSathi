@@ -26,7 +26,7 @@ type Consumer struct {
 	metrics  *observability.Metrics
 	retry    config.KafkaRetryConfig
 	pub      *pkafka.Publisher
-	attempts *pkafka.AttemptTracker
+	attempts pkafka.AttemptCounter
 	closer   func() error
 }
 
@@ -37,7 +37,11 @@ func NewConsumer(
 	log *slog.Logger,
 	metrics *observability.Metrics,
 	pub *pkafka.Publisher,
+	attempts pkafka.AttemptCounter,
 ) *Consumer {
+	if attempts == nil {
+		attempts = pkafka.NewAttemptTracker()
+	}
 	r := kafkago.NewReader(kafkago.ReaderConfig{
 		Brokers:        cfg.Brokers,
 		GroupID:        "bugsathi-media",
@@ -47,6 +51,7 @@ func NewConsumer(
 		MaxWait:        time.Second,
 		CommitInterval: 0,
 		StartOffset:    kafkago.FirstOffset,
+		Dialer:         pkafka.Dialer(cfg),
 	})
 	return &Consumer{
 		reader:   r,
@@ -55,7 +60,7 @@ func NewConsumer(
 		metrics:  metrics,
 		retry:    retry,
 		pub:      pub,
-		attempts: pkafka.NewAttemptTracker(),
+		attempts: attempts,
 		closer:   r.Close,
 	}
 }
@@ -79,8 +84,13 @@ func (c *Consumer) Run(ctx context.Context) error {
 			continue
 		}
 
-		msgCtx := logging.ContextWithCorrelationID(ctx, evt.CorrelationID)
-		msgCtx = logging.ContextWithRecordingID(msgCtx, evt.RecordingID)
+		msgCtx := logging.ContextWithCorrelationID(ctx, pkafka.CorrelationID(msg, evt.CorrelationID))
+		if rid := pkafka.HeaderValue(msg, pkafka.HeaderRecordingID); rid != "" {
+			msgCtx = logging.ContextWithRecordingID(msgCtx, rid)
+		} else {
+			msgCtx = logging.ContextWithRecordingID(msgCtx, evt.RecordingID)
+		}
+		evt.CorrelationID = logging.CorrelationIDFromContext(msgCtx)
 		log := logging.WithContext(msgCtx, c.log)
 		log.Info("processing RecordingUploaded",
 			"recording_id", evt.RecordingID,
@@ -94,7 +104,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 				spanCtx, span := tr.Start(attemptCtx, "media.HandleUploaded")
 				span.SetAttributes(
 					attribute.String("recording_id", evt.RecordingID),
-					attribute.String("correlation_id", evt.CorrelationID),
+					attribute.String("correlation_id", logging.CorrelationIDFromContext(msgCtx)),
 				)
 				hErr := c.svc.HandleUploaded(spanCtx, evt)
 				if domain.IsClaimConflict(hErr) {

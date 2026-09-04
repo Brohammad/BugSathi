@@ -33,9 +33,26 @@ func TestLoadDefaults(t *testing.T) {
 	if len(cfg.Kafka.Brokers) != 1 || cfg.Kafka.Brokers[0] != "kafka:9092" {
 		t.Fatalf("Kafka.Brokers = %#v", cfg.Kafka.Brokers)
 	}
+	if cfg.AI.MaxFrames != 5 || cfg.AI.FrameMaxBytes != 5<<20 {
+		t.Fatalf("AI frame limits = count %d bytes %d", cfg.AI.MaxFrames, cfg.AI.FrameMaxBytes)
+	}
 	dsn := cfg.Postgres.DSN()
 	if dsn == "" {
 		t.Fatal("expected DSN")
+	}
+}
+
+func TestLoadRejectsUnsafeAIFrameLimits(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("AI_MAX_FRAMES", "11")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AI_MAX_FRAMES") {
+		t.Fatalf("err=%v", err)
+	}
+
+	t.Setenv("AI_MAX_FRAMES", "5")
+	t.Setenv("AI_FRAME_MAX_BYTES", "20971521")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "AI_FRAME_MAX_BYTES") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
@@ -72,6 +89,40 @@ func TestProductionRejectsPprof(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "ENABLE_PPROF") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestMinIOPresignEndpointDefaultsToInternal(t *testing.T) {
+	cfg := MinIOConfig{Endpoint: "minio:9000", UseSSL: false}
+	ep, ssl := cfg.PresignEndpoint()
+	if ep != "minio:9000" || ssl {
+		t.Fatalf("PresignEndpoint() = %q ssl=%v", ep, ssl)
+	}
+}
+
+func TestMinIOPresignEndpointUsesPublicHost(t *testing.T) {
+	cfg := MinIOConfig{
+		Endpoint:       "minio:9000",
+		PublicEndpoint: "s3.example.com",
+		PublicUseSSL:   true,
+	}
+	ep, ssl := cfg.PresignEndpoint()
+	if ep != "s3.example.com" || !ssl {
+		t.Fatalf("PresignEndpoint() = %q ssl=%v", ep, ssl)
+	}
+}
+
+func TestLoadMinIOPublicEndpoint(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("HTTP_ADDR", ":8080")
+	t.Setenv("MINIO_PUBLIC_ENDPOINT", "s3.example.com")
+	t.Setenv("MINIO_PUBLIC_USE_SSL", "true")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MinIO.PublicEndpoint != "s3.example.com" || !cfg.MinIO.PublicUseSSL {
+		t.Fatalf("MinIO public = %+v", cfg.MinIO)
 	}
 }
 

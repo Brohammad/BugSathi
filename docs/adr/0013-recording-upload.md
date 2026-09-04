@@ -22,9 +22,9 @@ Screen recordings are large. Proxying bytes through the API wastes memory/bandwi
 ## Consequences
 
 **Positive** — thin API; durable event emission; interview-standard pattern.  
-**Negative** — orphan objects if client never calls complete (lifecycle sweeper
-still deferred). Project delete does clean `projects/{id}/…` including
-incomplete uploads (ADR 0026).
+**Negative** — orphan objects if client never calls complete until the worker
+GC TTL elapses (`UPLOAD_ABANDONED_TTL`). Project delete also cleans
+`projects/{id}/…` including incomplete uploads (ADR 0026).
 
 ## Alternatives
 

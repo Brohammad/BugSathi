@@ -33,5 +33,8 @@
 | [0029](0029-auth-refresh-rotate.md) | Atomic refresh token rotation | Accepted |
 | [0030](0030-ai-result-validation.md) | AI result validation + report_id on replay | Accepted |
 | [0031](0031-redis-multi-replica.md) | Optional Redis for multi-replica API | Accepted |
+| [0032](0032-audit-gap-hardening.md) | Audit-gap hardening (AI claim, cache, refresh reuse, upload, SSE UI) | Accepted |
+| [0033](0033-remaining-audit-gaps.md) | Remaining audit gaps (one commit per issue) | Accepted |
+| [0034](0034-deferred-audit-followups.md) | Deferred audit follow-ups (durable DLQ attempts, AnalysisStarted consumer) | Accepted |
 
 Format: Context → Decision → Consequences → Alternatives.

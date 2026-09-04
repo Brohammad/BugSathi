@@ -4,8 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE=(docker compose -f "$ROOT/deploy/compose/docker-compose.prod.yml" --env-file "$ROOT/.env.prod")
-API_URL="${API_URL:-http://127.0.0.1:8080}"
-WORKER_URL="${WORKER_URL:-http://127.0.0.1:8081}"
+API_URL="${API_URL:-http://127.0.0.1:${CADDY_HTTP_PORT:-80}}"
 TIMEOUT="${DRILL_TIMEOUT:-120}"
 
 if [[ ! -f "$ROOT/.env.prod" ]]; then
@@ -18,24 +17,46 @@ ready_code() {
   curl -fsS -o /dev/null -w '%{http_code}' "$url/readyz" 2>/dev/null || echo "000"
 }
 
-wait_for() {
-  local url=$1 want=$2 label=$3
+worker_ready_code() {
+  "${COMPOSE[@]}" exec -T worker curl -fsS -o /dev/null -w '%{http_code}' \
+    http://127.0.0.1:8081/readyz 2>/dev/null || echo "000"
+}
+
+wait_for_api() {
+  local want=$1
   local deadline=$((SECONDS + TIMEOUT))
   while (( SECONDS < deadline )); do
     local code
-    code=$(ready_code "$url")
+    code=$(ready_code "$API_URL")
     if [[ "$code" == "$want" ]]; then
-      echo "OK: $label /readyz = $code (expected $want)"
+      echo "OK: API /readyz = $code (expected $want)"
       return 0
     fi
     sleep 2
   done
-  echo "FAIL: $label /readyz did not reach $want within ${TIMEOUT}s (last=$(ready_code "$url"))" >&2
+  echo "FAIL: API /readyz did not reach $want within ${TIMEOUT}s (last=$(ready_code "$API_URL"))" >&2
+  return 1
+}
+
+wait_for_worker() {
+  local want=$1
+  local deadline=$((SECONDS + TIMEOUT))
+  while (( SECONDS < deadline )); do
+    local code
+    code=$(worker_ready_code)
+    if [[ "$code" == "$want" ]]; then
+      echo "OK: Worker /readyz = $code (expected $want)"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "FAIL: Worker /readyz did not reach $want within ${TIMEOUT}s (last=$(worker_ready_code))" >&2
   return 1
 }
 
 echo "== BugSathi chaos drill (Postgres stop/start) =="
 echo "Compose: ${COMPOSE[*]}"
+echo "API via Caddy: $API_URL"
 
 code=$(ready_code "$API_URL")
 if [[ "$code" != "200" ]]; then
@@ -47,8 +68,8 @@ echo "Baseline: API /readyz = $code"
 echo "Stopping postgres..."
 "${COMPOSE[@]}" stop postgres
 
-wait_for "$API_URL" "503" "API"
-wait_for "$WORKER_URL" "503" "Worker"
+wait_for_api "503"
+wait_for_worker "503"
 
 echo "Starting postgres..."
 "${COMPOSE[@]}" start postgres
@@ -67,7 +88,7 @@ if (( SECONDS >= deadline )); then
   exit 1
 fi
 
-wait_for "$API_URL" "200" "API"
-wait_for "$WORKER_URL" "200" "Worker"
+wait_for_api "200"
+wait_for_worker "200"
 
 echo "== Drill passed: readiness failed during outage and recovered =="

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BugSathi vision fixture</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #eef2f7; }
+    .shell { width: 1120px; height: 640px; margin: 40px auto; overflow: hidden; background: #fff; border: 1px solid #cbd5e1; border-radius: 12px; }
+    header { height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; color: #fff; background: #172033; }
+    header strong { font-size: 20px; } nav { display: flex; gap: 22px; color: #cbd5e1; }
+    main { padding: 34px; height: 576px; overflow: hidden; }
+    h1 { margin: 0 0 8px; font-size: 30px; } h2 { margin: 0 0 18px; } p { margin: 6px 0; }
+    .muted { color: #64748b; } .row { display: flex; align-items: center; gap: 16px; } .between { justify-content: space-between; }
+    .card { max-width: 640px; padding: 24px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+    .wide { max-width: none; } label { display: block; margin: 16px 0 6px; font-weight: 600; }
+    input { width: 100%; padding: 11px 12px; font: inherit; border: 1px solid #94a3b8; border-radius: 6px; }
+    button { padding: 10px 18px; font: inherit; font-weight: 650; color: #fff; background: #2563eb; border: 0; border-radius: 6px; }
+    button[disabled] { background: #94a3b8; } .danger { background: #dc2626; } .error { margin-top: 7px; color: #b91c1c; font-weight: 650; }
+    .banner { margin: 18px 0; padding: 14px 16px; border-radius: 7px; background: #fee2e2; color: #991b1b; }
+    .success { background: #dcfce7; color: #166534; } .badge { padding: 4px 9px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; font-weight: 700; }
+    .spinner { width: 52px; height: 52px; margin: 38px auto 14px; border: 6px solid #dbeafe; border-top-color: #2563eb; border-radius: 50%; }
+    .center { text-align: center; } .progress { height: 16px; margin: 22px 0 8px; overflow: hidden; background: #e2e8f0; border-radius: 999px; }
+    .progress > div { height: 100%; background: #2563eb; } table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { padding: 13px; text-align: left; border-bottom: 1px solid #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    th { color: #475569; background: #f8fafc; } .phone { position: relative; width: 360px; height: 470px; padding: 22px; overflow: hidden; border: 10px solid #172033; border-radius: 28px; }
+    .phone .actions { display: flex; margin-top: 300px; gap: 10px; } .phone.broken .actions { position: absolute; left: 180px; width: 310px; }
+    .dark { height: 100%; color: #475569; background: #111827; } .dark .card { color: #374151; background: #182133; border-color: #273449; }
+    .dark h1 { color: #f8fafc; } .invoice { padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; }
+    .strike { text-decoration: line-through; } .huge404 { font-size: 96px; font-weight: 800; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header><strong>Northstar</strong><nav><span>Dashboard</span><span>Projects</span><span>Settings</span></nav></header>
+    <main id="fixture"></main>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const id = params.get("case") || "registration-error";
+    const frame = params.get("frame") === "before" ? "before" : "after";
+    const cases = {
+      "registration-error": {
+        before: `<h1>Create account</h1><p class="muted">Start your 14-day trial.</p><div class="card"><label>Email</label><input value="dev@example.com"><label>Password</label><input type="password" value="short"><p class="muted">Use a secure password.</p><button>Create account</button></div>`,
+        after: `<h1>Create account</h1><p class="muted">Start your 14-day trial.</p><div class="card"><label>Email</label><input value="dev@example.com"><label>Password</label><input type="password" value="short"><p class="error">Password must contain at least 12 characters</p><button>Create account</button></div>`
+      },
+      "duplicate-submit": {
+        before: `<h1>Review order</h1><div class="card"><div class="between row"><strong>Team plan</strong><strong>$49.00</strong></div><p class="muted">Billed monthly</p><button>Place order</button></div>`,
+        after: `<h1>Review order</h1><div class="banner">Payment submitted twice</div><div class="row"><div class="invoice"><strong>Invoice #4812</strong><p>$49.00 · Processing</p></div><div class="invoice"><strong>Invoice #4813</strong><p>$49.00 · Processing</p></div></div><p><button disabled>Processing…</button></p>`
+      },
+      "mobile-overlap": {
+        before: `<h1>Mobile profile</h1><div class="phone"><h2>Alex Morgan</h2><p class="muted">Product designer</p><div class="actions"><button>Message</button><button>Edit</button></div></div>`,
+        after: `<h1>Mobile profile</h1><div class="phone broken"><h2>Alex Morgan</h2><p class="muted">Product designer</p><div class="actions"><button>Message</button><button class="danger">Delete profile</button></div></div><p class="error">Action buttons overflow the mobile viewport</p>`
+      },
+      "stuck-loader": {
+        before: `<h1>Account overview</h1><div class="card center"><div class="spinner"></div><strong>Loading account…</strong><p class="muted">Fetching workspace details</p></div>`,
+        after: `<h1>Account overview</h1><div class="card center"><div class="spinner"></div><strong>Loading account…</strong><p class="error">Still loading after 2 minutes</p><p class="muted">Workspace details never appeared</p></div>`
+      },
+      "not-found-navigation": {
+        before: `<h1>Billing settings</h1><div class="card"><h2>Payment method</h2><p>Visa ending in 4242</p><button>Manage billing</button></div>`,
+        after: `<div class="center"><div class="huge404">404</div><h1>Page not found</h1><p class="muted">The path /settings/billing could not be found.</p><button>Return to dashboard</button></div>`
+      },
+      "checkout-format": {
+        before: `<h1>Checkout</h1><div class="card"><label>Card number</label><input value="4242 4242 4242 4242"><label>Expiry</label><input value="12/29"><button>Pay $49.00</button></div>`,
+        after: `<h1>Checkout</h1><div class="card"><label>Card number</label><input value="4242 4242"><p class="error">Card number must contain 16 digits</p><label>Expiry</label><input value="12/29"><button>Pay $49.00</button></div>`
+      },
+      "dark-contrast": {
+        before: `<div class="dark"><h1>Developer settings</h1><div class="card"><h2>API credentials</h2><p>Production API key</p><p>Expires tomorrow</p><button>Rotate key</button></div></div>`,
+        after: `<div class="dark"><h1>Developer settings</h1><div class="card"><h2>API credentials</h2><p>Production API key</p><p>Expires tomorrow</p><p>The key warning text has insufficient contrast against the dark card.</p><button>Rotate key</button></div></div>`
+      },
+      "stale-status": {
+        before: `<div class="between row"><div><h1>Incidents</h1><p class="muted">Production services</p></div><span class="badge">12 open</span></div><div class="banner">12 incidents require attention</div>`,
+        after: `<div class="between row"><div><h1>Incidents</h1><p class="muted">All incidents were resolved</p></div><span class="badge">12 open</span></div><div class="banner success">0 active incidents</div><p class="error">Header badge still shows 12 open</p>`
+      },
+      "upload-stuck": {
+        before: `<h1>Upload recording</h1><div class="card"><strong>checkout-bug.webm</strong><div class="progress"><div style="width:32%"></div></div><p>Uploading… 32%</p><p class="muted">18.4 MB of 57.5 MB</p></div>`,
+        after: `<h1>Upload recording</h1><div class="card"><strong>checkout-bug.webm</strong><div class="progress"><div style="width:73%"></div></div><p>Uploading… 73%</p><p class="error">No progress for 5 minutes</p><button class="danger">Cancel upload</button></div>`
+      },
+      "table-clipping": {
+        before: `<h1>Workspace members</h1><div class="card wide"><table><tr><th style="width:45%">Email</th><th>Role</th><th>Status</th></tr><tr><td>alex@example.com</td><td>Admin</td><td>Active</td></tr></table></div>`,
+        after: `<h1>Workspace members</h1><div class="card wide"><table><tr><th style="width:18%">Email</th><th>Role</th><th>Status</th></tr><tr><td>alexandra.longlastname@enterprise-example-company.com</td><td>Administrator</td><td>Invitation pending</td></tr></table><p class="error">Member email is clipped and cannot be read</p></div>`
+      }
+    };
+    document.getElementById("fixture").innerHTML = (cases[id] || cases["registration-error"])[frame];
+    document.title = `${id}-${frame}`;
+  </script>
+</body>
+</html>

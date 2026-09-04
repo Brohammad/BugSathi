@@ -11,7 +11,9 @@ Local Compose runs dependencies only; apps are usually launched with `make run-*
 ## Decision
 
 1. **Primary deliverable: Production Compose** (`deploy/compose/docker-compose.prod.yml`)
-   - Runs Postgres, MinIO, Redpanda, API, Worker, one-shot migrate, and optional observability.
+   - Runs Postgres, Redis, MinIO, Redpanda, API, Worker, web SPA, Caddy, one-shot migrate, and optional observability.
+   - **Public surface is Caddy only** (80/443, plus local S3 on 9000). Infra, API, worker, MinIO console, and `/metrics` are not published on `0.0.0.0`.
+   - Browser presigned uploads use `MINIO_PUBLIC_ENDPOINT` so signatures match the Caddy S3 hostname, not `minio:9000`.
    - Config via `.env.prod` (never commit real secrets). Same env var names as local (ADR 0007).
 2. **Images:** multi-stage Dockerfiles for `api`, `worker`, `migrate` under `deploy/docker/`.
    - Container `HEALTHCHECK` hits `/healthz`; Compose/K8s use `/readyz` for readiness.

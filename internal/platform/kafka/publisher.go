@@ -15,6 +15,7 @@ type Publisher struct {
 }
 
 func NewPublisher(cfg config.KafkaConfig) *Publisher {
+	dialer := Dialer(cfg)
 	return &Publisher{
 		writer: &kafkago.Writer{
 			Addr:         kafkago.TCP(cfg.Brokers...),
@@ -22,6 +23,9 @@ func NewPublisher(cfg config.KafkaConfig) *Publisher {
 			RequiredAcks: kafkago.RequireOne,
 			Async:        false,
 			BatchTimeout: 10 * time.Millisecond,
+			Transport: &kafkago.Transport{
+				ClientID: dialer.ClientID,
+			},
 		},
 	}
 }

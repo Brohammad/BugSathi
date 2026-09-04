@@ -11,13 +11,24 @@ import (
 )
 
 var (
-	ErrNotFound             = errors.New("not found")
+	ErrNotFound              = errors.New("not found")
 	ErrInvalidAnalysisResult = errors.New("invalid analysis result")
+	// ErrAnalysisInFlight means another worker holds a live analysis lease.
+	// Kafka consumers should commit and skip rather than retry into the DLQ.
+	ErrAnalysisInFlight = errors.New("analysis already in progress")
 )
 
-const PromptVersion = "prompt_v1"
+// IsInFlight reports whether the error means some other worker owns this analysis.
+func IsInFlight(err error) bool {
+	return errors.Is(err, ErrAnalysisInFlight)
+}
+
+// PromptVersion changes whenever model inputs or report-generation semantics
+// change. prompt_v2 introduces actual chronological image content.
+const PromptVersion = "prompt_v2"
 
 const (
+	TopicAnalysisStarted   = "bugsathi.analysis.started"
 	TopicAnalysisCompleted = "bugsathi.analysis.completed"
 	TopicReportGenerated   = "bugsathi.report.generated"
 )
@@ -74,10 +85,20 @@ type Report struct {
 	UpdatedAt     time.Time
 }
 
+// FrameInput is a bounded, provider-neutral visual input loaded from object
+// storage before analysis. StorageKey is retained for ordering and diagnostics;
+// analyzers must use Data rather than assuming they can access private storage.
+type FrameInput struct {
+	StorageKey string
+	MediaType  string
+	Data       []byte
+}
+
 type AnalysisInput struct {
 	RecordingID   string
 	ProjectID     string
 	FrameKeys     []string
+	Frames        []FrameInput
 	MetadataJSON  json.RawMessage
 	PromptVersion string
 }
@@ -121,6 +142,16 @@ func NormalizeAnalysisResult(r AnalysisResult) AnalysisResult {
 		}
 	}
 	return out
+}
+
+type AnalysisStartedEvent struct {
+	SchemaVersion int       `json:"schema_version"`
+	RecordingID   string    `json:"recording_id"`
+	ProjectID     string    `json:"project_id"`
+	ReportID      string    `json:"report_id"`
+	PromptVersion string    `json:"prompt_version"`
+	CorrelationID string    `json:"correlation_id"`
+	OccurredAt    time.Time `json:"occurred_at"`
 }
 
 type AnalysisCompletedEvent struct {
