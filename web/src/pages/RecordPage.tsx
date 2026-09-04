@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
 import { StatusPill } from '../components/ui'
+import { RECORDING_ACCEPT, recordingContentType } from '../media/contentType'
 
 type Phase = 'idle' | 'recording' | 'uploading' | 'processing' | 'done' | 'error'
 
@@ -68,17 +69,23 @@ export function RecordPage() {
   }
 
   async function uploadBlob(blob: Blob, filename: string) {
+    const contentType = recordingContentType({ type: blob.type, name: filename })
+    if (!contentType) {
+      setError('Upload a WebM, MP4, or MOV file.')
+      setPhase('error')
+      return
+    }
     setPhase('uploading')
     setStatus('Creating recording…')
     try {
-      const created = await api.createRecording(projectId, 'video/webm', filename, {
+      const created = await api.createRecording(projectId, contentType, filename, {
         browser: navigator.userAgent.includes('Chrome') ? 'chrome' : 'browser',
         os: navigator.platform || 'unknown',
         source: 'web-ui',
       })
       setRecordingId(created.recording.id)
       setStatus('Uploading to object storage…')
-      await api.uploadBlob(created.upload_url, blob, 'video/webm')
+      await api.uploadBlob(created.upload_url, blob, contentType)
       setStatus('Completing upload…')
       await api.completeRecording(projectId, created.recording.id)
       setPhase('processing')
@@ -132,7 +139,7 @@ export function RecordPage() {
           <Link to={`/projects/${projectId}`}>← Project</Link>
         </p>
         <h1>Capture bug</h1>
-        <p className="muted">Record your screen or upload an existing WebM. The worker extracts frames and generates the report.</p>
+        <p className="muted">Record your screen or upload a WebM, MP4, or MOV. The worker extracts frames and generates the report.</p>
       </div>
 
       <section className="panel panel-pad recorder">
@@ -167,7 +174,7 @@ export function RecordPage() {
         <h2>Or upload a file</h2>
         <input
           type="file"
-          accept="video/webm,video/*"
+          accept={RECORDING_ACCEPT}
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
         <button
