@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, ApiError } from '../api/client'
+import { api, apiURL, ApiError } from '../api/client'
 import type { Comment, ReportDetail } from '../api/types'
 import { StatusPill, StepsList } from '../components/ui'
 
@@ -41,7 +41,7 @@ export function ReportPage() {
     if (!token || !projectId || !reportId) return
 
     const url =
-      `/v1/projects/${projectId}/reports/${reportId}/events` +
+      apiURL(`/v1/projects/${projectId}/reports/${reportId}/events`) +
       `?access_token=${encodeURIComponent(token)}`
     const es = new EventSource(url)
 
