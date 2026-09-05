@@ -12,6 +12,11 @@ import type {
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 
+/** Same origin prefix used by `fetch` — EventSource must use this too. */
+export function apiURL(path: string): string {
+  return `${API_BASE}${path}`
+}
+
 export class ApiError extends Error {
   status: number
   body: string
