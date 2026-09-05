@@ -126,6 +126,25 @@ func TestLoadMinIOPublicEndpoint(t *testing.T) {
 	}
 }
 
+func TestProductionRejectsOpenAIWithoutKey(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("AI_PROVIDER", "openai")
+	t.Setenv("AI_API_KEY", "")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "AI_API_KEY") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestProductionAllowsOpenAIWithKey(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("AI_PROVIDER", "openai")
+	t.Setenv("AI_API_KEY", "sk-test")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+}
+
 func TestProductionRejectsPlaintextShareTokens(t *testing.T) {
 	setProdEnv(t)
 	t.Setenv("SHARE_HASH_TOKENS", "false")
