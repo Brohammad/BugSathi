@@ -18,6 +18,6 @@ data:
   MINIO_BUCKET: "bugsathi"
   KAFKA_BROKERS: "redpanda.bugsathi.svc.cluster.local:9092"
   KAFKA_CLIENT_ID: "bugsathi"
-  AI_PROVIDER: "mock"
+  AI_PROVIDER: "openai"
   AUTH_ACCESS_TTL: "15m"
   AUTH_REFRESH_TTL: "168h"
