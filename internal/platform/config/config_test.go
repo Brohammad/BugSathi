@@ -154,6 +154,34 @@ func TestProductionAllowsOpenAIWithKey(t *testing.T) {
 	}
 }
 
+func TestProductionRejectsMockAI(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("AI_PROVIDER", "mock")
+	t.Setenv("ALLOW_MOCK_AI", "false")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "AI_PROVIDER=mock") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestProductionAllowsMockAIWhenExplicit(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("AI_PROVIDER", "mock")
+	t.Setenv("ALLOW_MOCK_AI", "true")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+}
+
+func TestProductionRejectsUnknownAIProvider(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("AI_PROVIDER", "anthropic")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "AI_PROVIDER") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestProductionRejectsPlaintextShareTokens(t *testing.T) {
 	setProdEnv(t)
 	t.Setenv("SHARE_HASH_TOKENS", "false")
@@ -172,4 +200,6 @@ func setProdEnv(t *testing.T) {
 	t.Setenv("MINIO_SECRET_KEY", "strong-minio-secret-key")
 	t.Setenv("ENABLE_PPROF", "false")
 	t.Setenv("MINIO_PUBLIC_ENDPOINT", "s3.example.com")
+	t.Setenv("AI_PROVIDER", "openai")
+	t.Setenv("AI_API_KEY", "sk-test")
 }

@@ -73,6 +73,7 @@ type AIConfig struct {
 	FrameMaxBytes int64         // maximum bytes loaded for one visual frame
 	ClaimLease    time.Duration // soft lease via analyses.updated_at
 	ClaimRenew    time.Duration
+	AllowMock     bool // production escape hatch for demo VPS only
 }
 
 type AuthConfig struct {
@@ -208,6 +209,7 @@ func Load() (Config, error) {
 			FrameMaxBytes: int64(getenvInt("AI_FRAME_MAX_BYTES", 5<<20)),
 			ClaimLease:    getenvDuration("AI_CLAIM_LEASE", 0), // 0 → Timeout+30s (min 2m) in worker
 			ClaimRenew:    getenvDuration("AI_CLAIM_RENEW", 30*time.Second),
+			AllowMock:     getenvBool("ALLOW_MOCK_AI", false),
 		},
 		Media: MediaConfig{
 			WorkerID:   getenv("WORKER_ID", ""),
@@ -303,7 +305,25 @@ func (c Config) validateProduction() error {
 	case strings.TrimSpace(c.MinIO.PublicEndpoint) == "":
 		return fmt.Errorf("MINIO_PUBLIC_ENDPOINT is required when APP_ENV=production")
 	}
+	if err := c.validateProductionAI(); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (c Config) validateProductionAI() error {
+	provider := strings.ToLower(strings.TrimSpace(c.AI.Provider))
+	switch provider {
+	case "openai":
+		return nil
+	case "mock", "":
+		if c.AI.AllowMock {
+			return nil
+		}
+		return fmt.Errorf("AI_PROVIDER=mock is not allowed when APP_ENV=production (set ALLOW_MOCK_AI=true for demos)")
+	default:
+		return fmt.Errorf("AI_PROVIDER must be openai or mock when APP_ENV=production")
+	}
 }
 
 func getenv(key, fallback string) string {
