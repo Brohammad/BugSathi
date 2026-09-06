@@ -126,6 +126,15 @@ func TestLoadMinIOPublicEndpoint(t *testing.T) {
 	}
 }
 
+func TestProductionRejectsEmptyMinIOPublicEndpoint(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("MINIO_PUBLIC_ENDPOINT", "")
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "MINIO_PUBLIC_ENDPOINT") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestProductionRejectsOpenAIWithoutKey(t *testing.T) {
 	setProdEnv(t)
 	t.Setenv("AI_PROVIDER", "openai")
@@ -162,4 +171,5 @@ func setProdEnv(t *testing.T) {
 	t.Setenv("POSTGRES_PASSWORD", "strong-postgres-password")
 	t.Setenv("MINIO_SECRET_KEY", "strong-minio-secret-key")
 	t.Setenv("ENABLE_PPROF", "false")
+	t.Setenv("MINIO_PUBLIC_ENDPOINT", "s3.example.com")
 }

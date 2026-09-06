@@ -300,6 +300,8 @@ func (c Config) validateProduction() error {
 		return fmt.Errorf("SHARE_HASH_TOKENS must be true when APP_ENV=production")
 	case strings.EqualFold(c.AI.Provider, "openai") && strings.TrimSpace(c.AI.APIKey) == "":
 		return fmt.Errorf("AI_API_KEY is required when APP_ENV=production and AI_PROVIDER=openai")
+	case strings.TrimSpace(c.MinIO.PublicEndpoint) == "":
+		return fmt.Errorf("MINIO_PUBLIC_ENDPOINT is required when APP_ENV=production")
 	}
 	return nil
 }
