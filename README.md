@@ -4,7 +4,7 @@ Local-first, AI-native bug reporting platform — built as a production-grade sy
 
 ## Current status
 
-**Milestone 25 — optional Redis for multi-replica API** (auth, upload, pipeline, web UI, and production Compose are on `master`)
+**Milestone 29 — grounded multimodal analysis** (auth, upload, pipeline, web UI, production Compose, and prod AI/MinIO guards are on `master`)
 
 ```bash
 # API + worker (separate terminals)
