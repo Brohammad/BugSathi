@@ -186,6 +186,12 @@
 - `prompt_v2` prevents text-only analyses from satisfying multimodal replays
 - Ten-case grounded-output evaluation gate in `docs/evaluation/VISION-EVAL.md`
 
+### M30 — Outbound ticket integrations (deferred)
+- Consume `ReportGenerated`; do not call vendors from the AI or report HTTP paths
+- `TicketSink` port + mock adapter; persist external id for idempotent retries
+- Jira create-issue first; Slack incoming webhook as notify-only
+- ServiceNow later on the same port (enterprise/ITSM), not a parallel stack
+
 ## Suggested weekly cadence (flexible)
 
 | Week | Focus |
