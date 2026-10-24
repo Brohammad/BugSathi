@@ -60,9 +60,9 @@ services:
           memory: 32M
 
   minio:
-    # MinIO removed its Docker Hub images in 2026. Elestio mirrors the last
-    # community release (RELEASE.2025-10-15T17-29-55Z) and keeps the upstream
-    # entrypoint, user, and curl-based healthcheck behavior.
+    # MinIO removed its Docker Hub images in 2026. Elestio mirrors the upstream
+    # image (RELEASE.2025-09-07T16-13-09Z) and keeps the entrypoint, user, and
+    # curl-based healthcheck behavior.
     image: elestio/minio:latest
     command: server /data --console-address ":9001"
     environment:
@@ -268,7 +268,7 @@ services:
     environment:
       CADDY_SITE: ${CADDY_SITE:-:80}
       CADDY_S3_SITE: ${CADDY_S3_SITE:-:9000}
-      ACME_EMAIL: ${ACME_EMAIL:-}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@localhost}
     ports:
       - "${CADDY_HTTP_PORT:-80}:80"
       - "${CADDY_HTTPS_PORT:-443}:443"

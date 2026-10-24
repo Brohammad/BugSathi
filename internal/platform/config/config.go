@@ -107,6 +107,7 @@ type MinIOConfig struct {
 	AccessKey      string
 	SecretKey      string
 	Bucket         string
+	Region         string
 	UseSSL         bool
 	PublicUseSSL   bool
 }
@@ -187,6 +188,7 @@ func Load() (Config, error) {
 			AccessKey:      getenv("MINIO_ACCESS_KEY", "bugsathi"),
 			SecretKey:      getenv("MINIO_SECRET_KEY", "bugsathi_secret"),
 			Bucket:         getenv("MINIO_BUCKET", "bugsathi"),
+			Region:         getenv("MINIO_REGION", "us-east-1"),
 			UseSSL:         getenvBool("MINIO_USE_SSL", false),
 			PublicUseSSL:   getenvBool("MINIO_PUBLIC_USE_SSL", false),
 		},

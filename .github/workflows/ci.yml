@@ -128,7 +128,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
       - name: Prepare prod env
-        run: ./scripts/gen-prod-secrets.sh --write
+        run: |
+          ./scripts/gen-prod-secrets.sh --write
+          # CI has no external AI key; exercise the stack with the mock provider.
+          sed -i 's/^AI_PROVIDER=.*/AI_PROVIDER=mock/' .env.prod
+          echo 'ALLOW_MOCK_AI=true' >> .env.prod
       - name: Start production stack
         run: make up-prod
       - name: Wait for Caddy readiness
