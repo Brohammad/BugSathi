@@ -16,6 +16,7 @@ data:
   MINIO_ENDPOINT: "minio.bugsathi.svc.cluster.local:9000"
   MINIO_USE_SSL: "false"
   MINIO_BUCKET: "bugsathi"
+  MINIO_REGION: "us-east-1"
   KAFKA_BROKERS: "redpanda.bugsathi.svc.cluster.local:9092"
   KAFKA_CLIENT_ID: "bugsathi"
   AI_PROVIDER: "openai"

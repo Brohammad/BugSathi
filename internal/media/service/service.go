@@ -90,7 +90,7 @@ func (s *Service) HandleUploaded(ctx context.Context, evt domain.RecordingUpload
 	}
 	if rec.Status == uploaddomain.StatusReady {
 		if len(existing) > 0 {
-			return s.publishFramesExtracted(ctx, rec, existing, 0, evt.CorrelationID)
+			return s.publishFramesExtracted(ctx, rec, existing, 0, evt.CorrelationID, evt.ForceAnalysis)
 		}
 		return nil
 	}
@@ -189,6 +189,7 @@ func (s *Service) extract(ctx context.Context, id uuid.UUID, rec uploaddomain.Re
 		FrameKeys:     frameKeys,
 		ThumbKey:      thumbKey,
 		DurationMS:    result.DurationMS,
+		ForceAnalysis: evt.ForceAnalysis,
 		CorrelationID: firstNonEmpty(evt.CorrelationID, rec.CorrelationID),
 		OccurredAt:    s.now().UTC(),
 	})
@@ -244,7 +245,7 @@ func (s *Service) fail(ctx context.Context, id uuid.UUID) {
 	_ = s.store.MarkFailed(releaseCtx, id, s.claim.Owner, s.now())
 }
 
-func (s *Service) publishFramesExtracted(ctx context.Context, rec uploaddomain.Recording, artifacts []domain.Artifact, durationMS int64, corr string) error {
+func (s *Service) publishFramesExtracted(ctx context.Context, rec uploaddomain.Recording, artifacts []domain.Artifact, durationMS int64, corr string, forceAnalysis bool) error {
 	frameKeys := make([]string, 0)
 	thumbKey := ""
 	for _, a := range artifacts {
@@ -265,6 +266,7 @@ func (s *Service) publishFramesExtracted(ctx context.Context, rec uploaddomain.R
 		FrameKeys:     frameKeys,
 		ThumbKey:      thumbKey,
 		DurationMS:    durationMS,
+		ForceAnalysis: forceAnalysis,
 		CorrelationID: firstNonEmpty(corr, rec.CorrelationID),
 		OccurredAt:    s.now().UTC(),
 	})

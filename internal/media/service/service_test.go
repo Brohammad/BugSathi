@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync/atomic"
 	"testing"
@@ -105,6 +106,40 @@ func TestHandleUploadedExtractsFrames(t *testing.T) {
 	}
 	if _, held := f.store.Claim(f.id); held {
 		t.Fatal("republish must not take a claim")
+	}
+}
+
+func TestHandleUploadedReadyReprocessForwardsForceAnalysis(t *testing.T) {
+	f := newFixture(t, uploaddomain.StatusUploaded)
+	extractor := &blockingExtractor{}
+	svc := service.New(f.store, f.objects, extractor, service.ClaimConfig{Owner: "worker-a"})
+
+	if err := svc.HandleUploaded(context.Background(), f.event()); err != nil {
+		t.Fatal(err)
+	}
+	if got := extractor.calls.Load(); got != 1 {
+		t.Fatalf("ffmpeg ran %d times, want 1", got)
+	}
+
+	evt := f.event()
+	evt.ForceAnalysis = true
+	if err := svc.HandleUploaded(context.Background(), evt); err != nil {
+		t.Fatal(err)
+	}
+	if got := extractor.calls.Load(); got != 1 {
+		t.Fatalf("READY replay ran ffmpeg %d times, want 1", got)
+	}
+
+	msgs := f.store.Outbox()
+	if len(msgs) != 2 {
+		t.Fatalf("outbox=%d, want 2 FramesExtracted events", len(msgs))
+	}
+	var payload domain.FramesExtractedEvent
+	if err := json.Unmarshal(msgs[len(msgs)-1].Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.ForceAnalysis {
+		t.Fatal("reprocess must forward force_analysis to the AI consumer")
 	}
 }
 

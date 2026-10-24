@@ -14,11 +14,11 @@ fi
 
 ready_code() {
   local url=$1
-  curl -fsS -o /dev/null -w '%{http_code}' "$url/readyz" 2>/dev/null || echo "000"
+  curl -sS -o /dev/null -w '%{http_code}' "$url/readyz" 2>/dev/null || echo "000"
 }
 
 worker_ready_code() {
-  "${COMPOSE[@]}" exec -T worker curl -fsS -o /dev/null -w '%{http_code}' \
+  "${COMPOSE[@]}" exec -T worker curl -sS -o /dev/null -w '%{http_code}' \
     http://127.0.0.1:8081/readyz 2>/dev/null || echo "000"
 }
 

@@ -46,12 +46,15 @@ type Artifact struct {
 const TopicFramesExtracted = "bugsathi.recording.frames-extracted"
 
 type FramesExtractedEvent struct {
-	SchemaVersion int       `json:"schema_version"`
-	RecordingID   string    `json:"recording_id"`
-	ProjectID     string    `json:"project_id"`
-	FrameKeys     []string  `json:"frame_keys"`
-	ThumbKey      string    `json:"thumb_key"`
-	DurationMS    int64     `json:"duration_ms"`
+	SchemaVersion int      `json:"schema_version"`
+	RecordingID   string   `json:"recording_id"`
+	ProjectID     string   `json:"project_id"`
+	FrameKeys     []string `json:"frame_keys"`
+	ThumbKey      string   `json:"thumb_key"`
+	DurationMS    int64    `json:"duration_ms"`
+	// ForceAnalysis forwards an owner reprocess to the AI consumer so a
+	// completed analysis is regenerated rather than replayed.
+	ForceAnalysis bool      `json:"force_analysis,omitempty"`
 	CorrelationID string    `json:"correlation_id"`
 	OccurredAt    time.Time `json:"occurred_at"`
 }
