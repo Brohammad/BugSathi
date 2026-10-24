@@ -105,7 +105,7 @@ export function ReportPage() {
     try {
       await api.reprocessRecording(projectId, detail.report.recording_id)
       setError('')
-      alert('Reprocess accepted — refresh in a few seconds.')
+      alert('Reprocess started — refresh when analysis finishes.')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Reprocess failed')
     } finally {
@@ -138,7 +138,12 @@ export function ReportPage() {
         <button type="button" className="btn btn-signal" disabled={busy} onClick={() => void onShare()}>
           Create share link
         </button>
-        <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void onReprocess()}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy || report.status === 'GENERATING'}
+          onClick={() => void onReprocess()}
+        >
           Reprocess recording
         </button>
         {shareUrl ? (

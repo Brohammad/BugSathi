@@ -22,11 +22,13 @@ type FrameReader interface {
 type Store interface {
 	GetAnalysis(ctx context.Context, recordingID uuid.UUID, promptVersion string) (domain.Analysis, error)
 	// TryClaimRunning atomically marks the analysis running when it is new,
-	// failed, or a stale in-flight lease (updated_at before leaseCutoff).
-	// Returns domain.ErrAnalysisInFlight when another worker holds a fresh lease,
-	// and domain.ErrNotFound only when the row is already completed (caller should
-	// treat completed via GetAnalysis).
-	TryClaimRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time) (domain.Analysis, error)
+	// failed, or a stale in-flight lease (updated_at before leaseCutoff). When
+	// force is true it also reclaims a completed analysis so an owner reprocess
+	// can regenerate the report. Returns domain.ErrAnalysisInFlight when another
+	// worker holds a fresh lease, and domain.ErrNotFound only when the row is
+	// already completed and force is false (caller should treat completed via
+	// GetAnalysis).
+	TryClaimRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time, force bool) (domain.Analysis, error)
 	TouchRunning(ctx context.Context, recordingID uuid.UUID, promptVersion string, at time.Time) error
 	// MarkGenerating upserts the report as GENERATING and emits AnalysisStarted.
 	MarkGenerating(ctx context.Context, recordingID, projectID uuid.UUID, corr string, at time.Time) (domain.Report, error)

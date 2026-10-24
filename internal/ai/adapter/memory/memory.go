@@ -65,14 +65,16 @@ func (s *Store) GetAnalysis(_ context.Context, recordingID uuid.UUID, promptVers
 	return a, nil
 }
 
-func (s *Store) TryClaimRunning(_ context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time) (domain.Analysis, error) {
+func (s *Store) TryClaimRunning(_ context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time, force bool) (domain.Analysis, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k := key(recordingID, promptVersion)
 	if existing, ok := s.analyses[k]; ok {
 		switch existing.Status {
 		case domain.AnalysisCompleted:
-			return domain.Analysis{}, domain.ErrNotFound
+			if !force {
+				return domain.Analysis{}, domain.ErrNotFound
+			}
 		case domain.AnalysisRunning:
 			if !existing.UpdatedAt.Before(leaseCutoff) {
 				return domain.Analysis{}, domain.ErrAnalysisInFlight

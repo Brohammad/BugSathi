@@ -29,7 +29,7 @@ func (s *Store) GetAnalysis(ctx context.Context, recordingID uuid.UUID, promptVe
 	return scanAnalysis(s.pool.QueryRow(ctx, q, recordingID, promptVersion))
 }
 
-func (s *Store) TryClaimRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time) (domain.Analysis, error) {
+func (s *Store) TryClaimRunning(ctx context.Context, recordingID, projectID uuid.UUID, promptVersion string, at, leaseCutoff time.Time, force bool) (domain.Analysis, error) {
 	const q = `
 		INSERT INTO analyses (id, recording_id, project_id, prompt_version, status, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,'running',$5,$5)
@@ -37,9 +37,10 @@ func (s *Store) TryClaimRunning(ctx context.Context, recordingID, projectID uuid
 		SET status = 'running', updated_at = EXCLUDED.updated_at, error_message = ''
 		WHERE analyses.status IN ('pending', 'failed')
 		   OR (analyses.status = 'running' AND analyses.updated_at < $6)
+		   OR ($7 AND analyses.status = 'completed')
 		RETURNING id, recording_id, project_id, prompt_version, status, title, summary, steps,
 			provider, model, error_message, created_at, updated_at`
-	out, err := scanAnalysis(s.pool.QueryRow(ctx, q, uuid.New(), recordingID, projectID, promptVersion, at, leaseCutoff))
+	out, err := scanAnalysis(s.pool.QueryRow(ctx, q, uuid.New(), recordingID, projectID, promptVersion, at, leaseCutoff, force))
 	if errors.Is(err, domain.ErrNotFound) {
 		existing, gerr := s.GetAnalysis(ctx, recordingID, promptVersion)
 		if gerr != nil {
