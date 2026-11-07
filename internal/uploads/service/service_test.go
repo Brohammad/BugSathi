@@ -184,6 +184,51 @@ func TestReprocessFailedRecording(t *testing.T) {
 	}
 }
 
+func TestReprocessReadyMarksForceAnalysis(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessOK{}, time.Minute)
+
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm", Filename: "bug.webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "video/webm", []byte("fake-video"))
+	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := recs.Get(ctx, created.Recording.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Status = domain.StatusReady
+	if _, err := recs.Update(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+
+	before := len(outbox.Messages())
+	if _, err := svc.Reprocess(ctx, user, project, created.Recording.ID); err != nil {
+		t.Fatal(err)
+	}
+	msgs := outbox.Messages()
+	if len(msgs) != before+1 {
+		t.Fatalf("outbox=%d want %d", len(msgs), before+1)
+	}
+	var evt domain.RecordingUploadedEvent
+	if err := json.Unmarshal(msgs[len(msgs)-1].Payload, &evt); err != nil {
+		t.Fatal(err)
+	}
+	if !evt.ForceAnalysis {
+		t.Fatal("READY reprocess must force a fresh analysis")
+	}
+}
+
 func TestReprocessRequiresOwner(t *testing.T) {
 	outbox := memory.NewOutboxRepo()
 	recs := memory.NewRecordingRepo(outbox)

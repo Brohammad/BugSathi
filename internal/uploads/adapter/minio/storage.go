@@ -26,6 +26,7 @@ func New(cfg config.MinIOConfig) (*Storage, error) {
 	creds := credentials.NewStaticV4(cfg.AccessKey, cfg.SecretKey, "")
 	client, err := miniosdk.New(cfg.Endpoint, &miniosdk.Options{
 		Creds:  creds,
+		Region: cfg.Region,
 		Secure: cfg.UseSSL,
 	})
 	if err != nil {
@@ -35,6 +36,7 @@ func New(cfg config.MinIOConfig) (*Storage, error) {
 	if ep, useSSL := cfg.PresignEndpoint(); ep != cfg.Endpoint || useSSL != cfg.UseSSL {
 		signer, err = miniosdk.New(ep, &miniosdk.Options{
 			Creds:  creds,
+			Region: cfg.Region,
 			Secure: useSSL,
 		})
 		if err != nil {

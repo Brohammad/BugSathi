@@ -223,9 +223,11 @@ MEMBER_ACCESS=$(printf '%s' "$BODY" | json_get tokens.access_token)
 MEMBER_ID=$(printf '%s' "$BODY" | json_get user.id)
 
 section "2. Auth rate limit (auth bucket)"
-# Burst auth with wrong password from same IP — expect 429 eventually
+# Burst auth with wrong password from same IP — expect 429 eventually.
+# With Redis enabled the limiter uses a fixed window sized RPS×window
+# (default 5×60s = 300), so send enough requests to exhaust that bucket.
 HIT_429=0
-for i in $(seq 1 40); do
+for i in $(seq 1 400); do
   c=$(http_code -X POST "$API/v1/auth/login" \
     -H 'Content-Type: application/json' \
     -d "{\"email\":\"rate-$i@x.com\",\"password\":\"nope\"}")

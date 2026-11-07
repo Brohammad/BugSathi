@@ -246,7 +246,9 @@ func (s *Service) Get(ctx context.Context, userID, projectID, recordingID uuid.U
 }
 
 // Reprocess re-emits RecordingUploaded via the outbox so media/AI can run again.
-// Owner-only. Allowed for FAILED, UPLOADED, PROCESSING, or READY.
+// Owner-only. Allowed for FAILED, UPLOADED, PROCESSING, or READY. The event is
+// marked force-analysis so an already-completed AI analysis is regenerated
+// instead of treated as an idempotent replay.
 func (s *Service) Reprocess(ctx context.Context, userID, projectID, recordingID uuid.UUID) (RecordingDTO, error) {
 	if err := s.access.EnsureOwner(ctx, userID, projectID); err != nil {
 		return RecordingDTO{}, err
@@ -277,6 +279,7 @@ func (s *Service) Reprocess(ctx context.Context, userID, projectID, recordingID 
 		ByteSize:      *rec.ByteSize,
 		Checksum:      rec.Checksum,
 		Metadata:      rec.Metadata,
+		ForceAnalysis: true,
 		CorrelationID: rec.CorrelationID,
 		OccurredAt:    s.now().UTC(),
 	})

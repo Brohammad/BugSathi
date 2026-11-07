@@ -83,6 +83,9 @@ type RecordingUploadedEvent struct {
 	ByteSize      int64           `json:"byte_size"`
 	Checksum      string          `json:"checksum,omitempty"`
 	Metadata      json.RawMessage `json:"metadata"`
-	CorrelationID string          `json:"correlation_id"`
-	OccurredAt    time.Time       `json:"occurred_at"`
+	// ForceAnalysis marks an owner reprocess so consumers regenerate derived
+	// data instead of replaying an already-completed analysis.
+	ForceAnalysis bool      `json:"force_analysis,omitempty"`
+	CorrelationID string    `json:"correlation_id"`
+	OccurredAt    time.Time `json:"occurred_at"`
 }

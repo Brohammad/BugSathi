@@ -1,7 +1,10 @@
 package minio
 
 import (
+	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Brohammad/BugSathi/internal/platform/config"
 )
@@ -46,5 +49,26 @@ func TestNewSignsAgainstPublicEndpoint(t *testing.T) {
 	}
 	if public.Host != "s3.example.com" || public.Scheme != "https" {
 		t.Fatalf("public endpoint = %s", public)
+	}
+}
+
+func TestPresignPutUsesConfiguredRegionWithoutDialingPublicEndpoint(t *testing.T) {
+	s, err := New(config.MinIOConfig{
+		Endpoint:       "minio:9000",
+		PublicEndpoint: "127.0.0.1:1", // deliberately unreachable from the API
+		Region:         "us-east-1",
+		AccessKey:      "ak",
+		SecretKey:      "sk",
+		Bucket:         "bugsathi",
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	url, err := s.PresignPut(context.Background(), "projects/p/recordings/r/source.webm", "video/webm", time.Minute)
+	if err != nil {
+		t.Fatalf("PresignPut: %v", err)
+	}
+	if !strings.Contains(url, "127.0.0.1:1") {
+		t.Fatalf("presigned URL = %s, want public endpoint", url)
 	}
 }

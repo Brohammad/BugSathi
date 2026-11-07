@@ -75,6 +75,69 @@ func TestHandleFramesExtractedMock(t *testing.T) {
 	}
 }
 
+func TestHandleFramesExtractedReplayDoesNotReanalyzeCompleted(t *testing.T) {
+	store := memory.NewStore()
+	analyzer := &countingAnalyzer{}
+	svc := newSvc(store, analyzer)
+	recID := uuid.New()
+	projID := uuid.New()
+	store.SeedMeta(recID, projID, json.RawMessage(`{}`))
+	evt := domain.FramesExtractedEvent{
+		RecordingID: recID.String(), ProjectID: projID.String(),
+		FrameKeys: []string{"a.jpg"}, CorrelationID: "corr",
+	}
+
+	if err := svc.HandleFramesExtracted(context.Background(), evt); err != nil {
+		t.Fatal(err)
+	}
+	if got := analyzer.n.Load(); got != 1 {
+		t.Fatalf("analyzer calls=%d want 1", got)
+	}
+	// A redelivery without force_analysis is an idempotent replay.
+	if err := svc.HandleFramesExtracted(context.Background(), evt); err != nil {
+		t.Fatal(err)
+	}
+	if got := analyzer.n.Load(); got != 1 {
+		t.Fatalf("replay called analyzer %d times, want no re-analysis", got)
+	}
+}
+
+func TestHandleFramesExtractedForceReanalyzesCompleted(t *testing.T) {
+	store := memory.NewStore()
+	analyzer := &countingAnalyzer{}
+	svc := newSvc(store, analyzer)
+	recID := uuid.New()
+	projID := uuid.New()
+	store.SeedMeta(recID, projID, json.RawMessage(`{}`))
+	evt := domain.FramesExtractedEvent{
+		RecordingID: recID.String(), ProjectID: projID.String(),
+		FrameKeys: []string{"a.jpg"}, CorrelationID: "corr",
+	}
+
+	if err := svc.HandleFramesExtracted(context.Background(), evt); err != nil {
+		t.Fatal(err)
+	}
+	first, ok := store.Report(recID)
+	if !ok || first.Status != domain.ReportReady {
+		t.Fatalf("report=%+v ok=%v", first, ok)
+	}
+
+	evt.ForceAnalysis = true
+	if err := svc.HandleFramesExtracted(context.Background(), evt); err != nil {
+		t.Fatal(err)
+	}
+	if got := analyzer.n.Load(); got != 2 {
+		t.Fatalf("analyzer calls=%d want 2", got)
+	}
+	after, ok := store.Report(recID)
+	if !ok || after.Status != domain.ReportReady {
+		t.Fatalf("report=%+v ok=%v", after, ok)
+	}
+	if after.ID != first.ID {
+		t.Fatalf("report id changed: before=%s after=%s", first.ID, after.ID)
+	}
+}
+
 type badAnalyzer struct{}
 
 func (badAnalyzer) Analyze(context.Context, domain.AnalysisInput) (domain.AnalysisResult, error) {

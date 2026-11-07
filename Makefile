@@ -1,5 +1,5 @@
 # BugSathi — common developer commands
-# Requires: Docker Compose, Go 1.25+ (system Go OR .tools/go)
+# Requires: Docker Compose, Go 1.26+ (system Go OR .tools/go)
 
 COMPOSE := docker compose -f deploy/compose/docker-compose.yml
 COMPOSE_PROD := docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.prod
@@ -53,7 +53,7 @@ ensure-go:
 	@if ! command -v "$(GO)" >/dev/null 2>&1 && [ ! -x "$(GO)" ]; then \
 		echo "Go not found."; \
 		echo "Run:  make bootstrap-go"; \
-		echo "Or install Go 1.25+ and ensure it is on PATH."; \
+		echo "Or install Go 1.26+ and ensure it is on PATH."; \
 		exit 1; \
 	fi
 	@"$(GO)" version
@@ -73,7 +73,7 @@ bootstrap-go:
 		*) echo "unsupported arch: $$ARCH"; exit 1 ;; \
 	esac; \
 	OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
-	VER=1.25.0; \
+	VER=1.26.10; \
 	TGZ="go$${VER}.$${OS}-$${GOARCH}.tar.gz"; \
 	URL="https://go.dev/dl/$${TGZ}"; \
 	echo "Downloading $${URL}"; \

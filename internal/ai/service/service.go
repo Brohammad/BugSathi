@@ -74,7 +74,7 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 	}
 
 	existing, err := s.store.GetAnalysis(ctx, recordingID, domain.PromptVersion)
-	if err == nil && existing.Status == domain.AnalysisCompleted {
+	if err == nil && existing.Status == domain.AnalysisCompleted && !evt.ForceAnalysis {
 		return s.emitCompletedEvents(ctx, existing, evt.CorrelationID)
 	}
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -88,7 +88,7 @@ func (s *Service) HandleFramesExtracted(ctx context.Context, evt domain.FramesEx
 
 	now := s.now()
 	leaseCutoff := now.Add(-s.claimLease)
-	if _, err := s.store.TryClaimRunning(ctx, recordingID, projectID, domain.PromptVersion, now, leaseCutoff); err != nil {
+	if _, err := s.store.TryClaimRunning(ctx, recordingID, projectID, domain.PromptVersion, now, leaseCutoff, evt.ForceAnalysis); err != nil {
 		if errors.Is(err, domain.ErrAnalysisInFlight) {
 			return err
 		}

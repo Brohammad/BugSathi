@@ -78,6 +78,7 @@ the holder died and the recording is free to be picked up again (ADR 0025).
 | `GENERATING` | `READY` | Analysis persisted + report assembled |
 | `GENERATING` | `FAILED` | Exhausted AI retries |
 | `FAILED` | `GENERATING` | Reprocess via owner recording reprocess (re-emits upstream events) |
+| `READY` | `GENERATING` | Owner reprocess with `force_analysis` (regenerates a completed analysis) |
 
 ---
 
