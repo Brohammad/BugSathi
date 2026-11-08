@@ -119,10 +119,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (CreateResult, err
 		return CreateResult{}, err
 	}
 	ct := normalizeContentType(in.ContentType)
-	if ct == "" {
-		ct = "application/octet-stream"
-	}
-	if ct != "application/octet-stream" && !allowedUploadTypes[ct] {
+	if ct == "" || ct == "application/octet-stream" || !allowedUploadTypes[ct] {
 		return CreateResult{}, domain.ErrInvalidInput
 	}
 	ext := extensionFor(ct, in.Filename)
@@ -179,10 +176,10 @@ func (s *Service) Complete(ctx context.Context, userID, projectID, recordingID u
 		return RecordingDTO{}, domain.ErrObjectMissing
 	}
 	if s.uploadMaxBytes > 0 && meta.Size > s.uploadMaxBytes {
-		return RecordingDTO{}, domain.ErrObjectTooLarge
+		return s.failInvalidUpload(ctx, rec, domain.ErrObjectTooLarge)
 	}
 	if err := validateUploadedContentType(rec.ContentType, meta.ContentType); err != nil {
-		return RecordingDTO{}, err
+		return s.failInvalidUpload(ctx, rec, err)
 	}
 	size := meta.Size
 	rec.ByteSize = &size
@@ -220,15 +217,26 @@ func validateUploadedContentType(expected, actual string) error {
 	expected = normalizeContentType(expected)
 	actual = normalizeContentType(actual)
 	if actual == "" || actual == "application/octet-stream" {
-		return nil
+		return domain.ErrContentTypeMismatch
 	}
-	if expected == "" || expected == "application/octet-stream" {
-		return nil
-	}
-	if actual != expected {
+	if expected != actual {
 		return domain.ErrContentTypeMismatch
 	}
 	return nil
+}
+
+func (s *Service) failInvalidUpload(ctx context.Context, rec domain.Recording, cause error) (RecordingDTO, error) {
+	if s.storage != nil && rec.StorageKey != "" {
+		_ = s.storage.Delete(ctx, rec.StorageKey)
+	}
+	if err := rec.Transition(domain.StatusFailed, s.now()); err != nil {
+		return RecordingDTO{}, cause
+	}
+	updated, err := s.recordings.Update(ctx, rec)
+	if err != nil {
+		return RecordingDTO{}, cause
+	}
+	return toDTO(updated), cause
 }
 
 func (s *Service) Get(ctx context.Context, userID, projectID, recordingID uuid.UUID) (RecordingDTO, error) {
