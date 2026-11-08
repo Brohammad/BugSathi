@@ -92,6 +92,16 @@ func TestCompleteRejectsTooLarge(t *testing.T) {
 	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != domain.ErrObjectTooLarge {
 		t.Fatalf("got %v", err)
 	}
+	rec, err := recs.Get(ctx, created.Recording.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Status != domain.StatusFailed {
+		t.Fatalf("status=%s want FAILED", rec.Status)
+	}
+	if _, err := store.Stat(ctx, created.Recording.StorageKey); err != domain.ErrObjectMissing {
+		t.Fatalf("object should be removed, got %v", err)
+	}
 }
 
 func TestCompleteRejectsContentTypeMismatch(t *testing.T) {
@@ -113,6 +123,37 @@ func TestCompleteRejectsContentTypeMismatch(t *testing.T) {
 	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != domain.ErrContentTypeMismatch {
 		t.Fatalf("got %v", err)
 	}
+	rec, err := recs.Get(ctx, created.Recording.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Status != domain.StatusFailed {
+		t.Fatalf("status=%s want FAILED", rec.Status)
+	}
+	if _, err := store.Stat(ctx, created.Recording.StorageKey); err != domain.ErrObjectMissing {
+		t.Fatalf("object should be removed, got %v", err)
+	}
+}
+
+func TestCompleteRejectsOctetStreamObject(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	recs := memory.NewRecordingRepo(outbox)
+	store := memory.NewStorage()
+	svc := service.New(recs, store, memory.AccessOK{}, time.Minute)
+
+	ctx := context.Background()
+	user := uuid.New()
+	project := uuid.New()
+	created, err := svc.Create(ctx, service.CreateInput{
+		ProjectID: project, UserID: user, ContentType: "video/webm", Filename: "bug.webm",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Put(created.Recording.StorageKey, "application/octet-stream", []byte("fake"))
+	if _, err := svc.Complete(ctx, user, project, created.Recording.ID); err != domain.ErrContentTypeMismatch {
+		t.Fatalf("got %v", err)
+	}
 }
 
 func TestCreateRejectsDisallowedContentType(t *testing.T) {
@@ -123,6 +164,19 @@ func TestCreateRejectsDisallowedContentType(t *testing.T) {
 	})
 	if err != domain.ErrInvalidInput {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestCreateRejectsOctetStream(t *testing.T) {
+	outbox := memory.NewOutboxRepo()
+	svc := service.New(memory.NewRecordingRepo(outbox), memory.NewStorage(), memory.AccessOK{}, time.Minute)
+	for _, ct := range []string{"", "application/octet-stream", "APPLICATION/OCTET-STREAM"} {
+		_, err := svc.Create(context.Background(), service.CreateInput{
+			ProjectID: uuid.New(), UserID: uuid.New(), ContentType: ct,
+		})
+		if err != domain.ErrInvalidInput {
+			t.Fatalf("content_type=%q: got %v", ct, err)
+		}
 	}
 }
 
