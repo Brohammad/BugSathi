@@ -1,0 +1,16 @@
+$kind: http-request
+order: 2000
+id: 8a20673879dc3af5a2812a21
+name: Login
+method: POST
+url: '{{base_url}}/v1/auth/login'
+body:
+  type: json
+  content: '{"email":"{{loadtest_email}}","password":"{{loadtest_password}}"}'
+headers:
+  - key: Content-Type
+    value: application/json
+scripts:
+  - type: afterResponse
+    code: pm.test("login ok", () => pm.response.to.have.status(200)); const j = pm.response.json(); pm.environment.set("access_token", j.tokens.access_token);
+    language: text/javascript

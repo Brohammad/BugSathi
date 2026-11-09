@@ -1,0 +1,13 @@
+$kind: http-request
+order: 2000
+id: 316e804e146a17396721cd5b
+name: Readyz
+method: GET
+url: '{{base_url}}/readyz'
+headers:
+  - key: Authorization
+    value: Bearer {{access_token}}
+scripts:
+  - type: afterResponse
+    code: pm.test("readyz", () => pm.response.to.have.status(200));
+    language: text/javascript

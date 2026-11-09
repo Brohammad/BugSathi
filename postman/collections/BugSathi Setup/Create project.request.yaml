@@ -1,0 +1,18 @@
+$kind: http-request
+order: 3000
+id: 6b9107427fe5b34b4212a264
+name: Create project
+method: POST
+url: '{{base_url}}/v1/projects'
+body:
+  type: json
+  content: '{"name":"Loadtest Project"}'
+headers:
+  - key: Content-Type
+    value: application/json
+  - key: Authorization
+    value: 'Bearer {{access_token}}'
+scripts:
+  - type: afterResponse
+    code: pm.test("project created", () => pm.expect([201,200]).to.include(pm.response.code)); const j = pm.response.json(); if (j.project && j.project.id) pm.environment.set("project_id", j.project.id);
+    language: text/javascript

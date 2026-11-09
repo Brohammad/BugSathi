@@ -15,7 +15,7 @@ else
   GO ?= go
 endif
 
-.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race coverage vuln build build-images run-api run-worker health health-prod migrate fmt vet ci chaos-drill check-prod-compose smoke-prod e2e-prod backup-prod deploy-vps web-install web-dev web-lint web-build
+.PHONY: help ensure-go bootstrap-go up down up-prod up-prod-obs down-prod logs ps tidy test test-race coverage vuln build build-images run-api run-worker health health-prod migrate fmt vet ci chaos-drill check-prod-compose smoke-prod e2e-prod backup-prod deploy-vps web-install web-dev web-lint web-build loadtest loadtest-bootstrap postman-loadtest postman-smoke
 
 help:
 	@echo "Targets:"
@@ -39,6 +39,9 @@ help:
 	@echo "  make web-lint     Run frontend lint with warnings denied"
 	@echo "  make web-build    Production build of web/"
 	@echo "  make health       Curl local health endpoints"
+	@echo "  make loadtest     k6 read-path load (needs up + migrate + run-api)"
+	@echo "  make postman-smoke     Postman setup + read collections (needs run-api)"
+	@echo "  make postman-loadtest  Postman performance run (local runner)"
 	@echo "  make health-prod  Curl Caddy /readyz and confirm /metrics is 404"
 	@echo "  make smoke-prod   Fast prod smoke (needs up-prod)"
 	@echo "  make e2e-prod     Full E2E via Caddy (needs up-prod + ffmpeg)"
@@ -188,6 +191,35 @@ web-lint:
 
 web-build:
 	cd web && npm run build
+
+loadtest-bootstrap:
+	@chmod +x scripts/loadtest/bootstrap-env.sh scripts/loadtest/run.sh
+	@./scripts/loadtest/bootstrap-env.sh
+
+loadtest: loadtest-bootstrap
+	@./scripts/loadtest/run.sh
+
+postman-smoke:
+	@command -v postman >/dev/null || { echo "Install: npm install -g postman-cli"; exit 1; }
+	@curl -sf "$${API:-http://127.0.0.1:8080}/healthz" >/dev/null || { echo "Start API: make run-api"; exit 1; }
+	@chmod +x scripts/postman/sync-env.sh
+	@./scripts/postman/sync-env.sh
+	postman collection run "postman/collections/BugSathi Read Load" \
+		-e "postman/environments/BugSathi Local.environment.yaml"
+
+postman-loadtest:
+	@command -v postman >/dev/null || { echo "Install: npm install -g postman-cli"; exit 1; }
+	@curl -sf "$${API:-http://127.0.0.1:8080}/healthz" >/dev/null || { echo "Start API: make run-api"; exit 1; }
+	@chmod +x scripts/postman/sync-env.sh
+	@./scripts/postman/sync-env.sh
+	postman performance run "postman/collections/BugSathi Read Load" \
+		-e "postman/environments/BugSathi Local.environment.yaml" \
+		--runner local \
+		--load-profile fixed \
+		--peak-vu "$${POSTMAN_PEAK_VU:-5}" \
+		--duration "$${POSTMAN_DURATION:-1}" \
+		--pass-if "less_than(p95, 750)" \
+		--pass-if "less_than(error_rate, 10)"
 
 fmt: ensure-go
 	"$(GO)" fmt ./...
