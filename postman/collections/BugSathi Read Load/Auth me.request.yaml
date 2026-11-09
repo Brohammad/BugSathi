@@ -1,0 +1,13 @@
+$kind: http-request
+order: 3000
+id: 7c22dd5e41966ea97a073fbd
+name: Auth me
+method: GET
+url: '{{base_url}}/v1/auth/me'
+headers:
+  - key: Authorization
+    value: Bearer {{access_token}}
+scripts:
+  - type: afterResponse
+    code: pm.test("me", () => pm.response.to.have.status(200));
+    language: text/javascript

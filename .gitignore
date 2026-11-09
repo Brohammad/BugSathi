@@ -13,6 +13,8 @@ vendor/
 .env
 .env.local
 .env.prod
+scripts/loadtest/.env.loadtest
+postman/skills/
 *.pem
 
 # IDE / OS

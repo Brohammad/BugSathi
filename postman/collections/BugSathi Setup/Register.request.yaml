@@ -1,0 +1,16 @@
+$kind: http-request
+id: 7b24d83f772dc57f36cab554
+order: 1000
+name: Register
+method: POST
+url: '{{base_url}}/v1/auth/register'
+body:
+  type: json
+  content: '{"email":"{{loadtest_email}}","password":"{{loadtest_password}}","name":"Load Test"}'
+headers:
+  - key: Content-Type
+    value: application/json
+scripts:
+  - type: afterResponse
+    code: pm.test("register ok", () => { pm.expect([201,409]).to.include(pm.response.code); }); if (pm.response.code === 201) { const j = pm.response.json(); pm.environment.set("access_token", j.tokens.access_token); }
+    language: text/javascript

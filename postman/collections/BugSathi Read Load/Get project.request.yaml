@@ -1,0 +1,13 @@
+$kind: http-request
+order: 5000
+id: c3f6aa46bb9259350fd65a24
+name: Get project
+method: GET
+url: '{{base_url}}/v1/projects/{{project_id}}'
+headers:
+  - key: Authorization
+    value: Bearer {{access_token}}
+scripts:
+  - type: afterResponse
+    code: pm.test("get project", () => pm.response.to.have.status(200));
+    language: text/javascript

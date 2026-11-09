@@ -1,0 +1,9 @@
+workspace:
+  id: "f0743d7f-583a-45c2-82ba-79ea39631ecd"
+  name: My Workspace
+localResources:
+  collections:
+    - path: postman/collections/BugSathi Setup
+    - path: postman/collections/BugSathi Read Load
+  environments:
+    - path: postman/environments/BugSathi Local.environment.yaml

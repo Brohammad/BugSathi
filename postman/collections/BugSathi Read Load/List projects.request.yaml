@@ -1,0 +1,13 @@
+$kind: http-request
+order: 4000
+id: 1e700996215d9b7dcfe5c75d
+name: List projects
+method: GET
+url: '{{base_url}}/v1/projects'
+headers:
+  - key: Authorization
+    value: Bearer {{access_token}}
+scripts:
+  - type: afterResponse
+    code: pm.test("list", () => pm.response.to.have.status(200));
+    language: text/javascript
